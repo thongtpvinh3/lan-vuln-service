@@ -13,6 +13,20 @@ from app.common.messaging.event import BaseEvent
 logger = logging.getLogger(__name__)
 
 
+def check_topology(channel, config: RabbitMQConfig):
+    """Check existence only; passive AMQP declarations do not validate arguments/bindings."""
+    channel.exchange_declare(exchange=config.exchange, passive=True)
+    channel.queue_declare(queue=config.queue, passive=True)
+
+
+def is_retryable_broker_error(exc):
+    # Missing topology may be provisioned by Platform after this worker starts.
+    # Permission errors and incompatible settings need operator intervention.
+    if isinstance(exc, pika.exceptions.ConnectionClosedByBroker):
+        return exc.reply_code not in {403, 406, 530}
+    return exc.reply_code == 404
+
+
 class RabbitEventBus:
 
     def __init__(self, config: RabbitMQConfig):
@@ -97,9 +111,7 @@ class RabbitEventBus:
                 try:
                     connection = self._connect()
                     channel = connection.channel()
-                    channel.exchange_declare(exchange=self.config.exchange, passive=True)
-                    channel.queue_declare(queue=self.config.queue, passive=True)
-                    self._bind_queues(channel)
+                    check_topology(channel, self.config)
                     channel.basic_qos(prefetch_count=1)
 
                     def on_message(ch, method, properties, body):
@@ -139,32 +151,22 @@ class RabbitEventBus:
                 except KeyboardInterrupt:
                     logger.info("RabbitMQ consumer stopped")
                     break
+                except (pika.exceptions.ChannelClosedByBroker, pika.exceptions.ConnectionClosedByBroker) as exc:
+                    if not is_retryable_broker_error(exc):
+                        logger.error("RabbitMQ refused consumer (%s): %s; check configuration and permissions",
+                                     exc.reply_code, exc.reply_text)
+                        raise
+                    if exc.reply_code == 404:
+                        logger.warning("Platform topology is not ready; waiting for bootstrap")
+                    else:
+                        logger.warning("RabbitMQ connection closed by broker (%s); reconnecting", exc.reply_code)
+                    time.sleep(5)
+                except (pika.exceptions.ProbableAuthenticationError, pika.exceptions.ProbableAccessDeniedError):
+                    logger.exception("RabbitMQ authentication/vhost access failed; check credentials and permissions")
+                    raise
                 except (pika.exceptions.AMQPError, OSError):
                     logger.exception("RabbitMQ disconnected; reconnecting")
                     time.sleep(5)
 
                 finally:
                     if connection and connection.is_open: connection.close()
-
-    def _bind_queues(self, channel):
-        """
-        Bind queue theo RabbitMQConfig. Không bind theo self.handlers.
-        """
-        channel.queue_bind(
-            queue=self.config.queue,
-            exchange=self.config.exchange,
-            routing_key=self.config.request_binding
-        )
-
-        channel.queue_bind(
-            queue=self.config.queue,
-            exchange=self.config.exchange,
-            routing_key=self.config.cancel_binding
-        )
-
-        logger.info(
-            "Queue bindings configured: queue=%s bindings=%s,%s",
-            self.config.queue,
-            self.config.request_binding,
-            self.config.cancel_binding
-        )

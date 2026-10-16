@@ -2,7 +2,7 @@ import os
 from dataclasses import dataclass
 from pathlib import Path
 
-from dotenv import load_dotenv
+from dotenv import dotenv_values, load_dotenv
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
@@ -50,38 +50,62 @@ class ServiceConfig:
 class RabbitMQConfig:
     url: str
     exchange: str
-    exchange_type: str
     queue: str
-    request_binding: str
-    cancel_binding: str
     completed_step_key: str
     completed_stage_key: str
     list_event_type: tuple[str, ...]
-    dlx: str
-    dlq: str
+    topology_version: int
 
     @classmethod
     def from_env(cls) -> "RabbitMQConfig":
+        # Only Platform exports these non-secret settings. A file is convenient for
+        # local runs; deployments may inject the generated entries directly.
+        keys = ("RABBITMQ_TOPOLOGY_VERSION", "RABBITMQ_EXCHANGE", "RABBITMQ_QUEUE")
+        metadata = {}
+        config_file = os.getenv("RABBITMQ_CLIENT_ENV_FILE")
+        if config_file:
+            path = Path(config_file).expanduser()
+            if not path.is_absolute():
+                path = PROJECT_ROOT / path
+            if not path.is_file():
+                raise FileNotFoundError(f"Generated RabbitMQ client configuration not found: {path}")
+            metadata = dotenv_values(path, interpolate=False)
+            if set(metadata) != set(keys):
+                raise ValueError("RabbitMQ client file must contain exactly the three Platform-generated settings")
+            for key in keys:
+                if key in os.environ and os.environ[key] != metadata[key]:
+                    raise ValueError(f"{key} conflicts with the Platform-generated client file")
+        else:
+            metadata = {key: os.getenv(key) for key in keys}
+        if any(not metadata.get(key) for key in keys):
+            raise ValueError(
+                "Missing Platform-generated RabbitMQ client settings; export-env --service assessment "
+                "in Platform and set RABBITMQ_CLIENT_ENV_FILE or inject its entries"
+            )
+        if metadata["RABBITMQ_TOPOLOGY_VERSION"] != "1":
+            raise ValueError("Unsupported RabbitMQ topology version; deploy a compatible Assessment release")
+        retired = (
+            "RABBITMQ_EXCHANGE_TYPE", "RABBITMQ_REQUEST_BINDING", "RABBITMQ_CANCEL_BINDING",
+            "RABBITMQ_DLX", "RABBITMQ_DLQ",
+        )
+        if any(key in os.environ for key in retired):
+            raise ValueError("Remove retired RabbitMQ topology settings: " + ", ".join(
+                key for key in retired if key in os.environ
+            ) + "; Platform owns declarations and bindings")
         return cls(
             url=os.environ["RABBITMQ_URL"],
-            exchange=os.getenv("RABBITMQ_EXCHANGE", "lan_scanner"),
-            exchange_type=os.getenv("RABBITMQ_EXCHANGE_TYPE", "topic"),
-            queue=os.getenv("RABBITMQ_QUEUE", "assessment.inbox"),
-            request_binding=os.getenv("RABBITMQ_REQUEST_BINDING", "platform.assessment.#"),
-            cancel_binding=os.getenv("RABBITMQ_CANCEL_BINDING", "platform.scan.cancelled"),
+            exchange=metadata["RABBITMQ_EXCHANGE"],
+            queue=metadata["RABBITMQ_QUEUE"],
+            topology_version=int(metadata["RABBITMQ_TOPOLOGY_VERSION"]),
             completed_step_key=os.getenv("RABBITMQ_COMPLETED_STEP_KEY", "assessment.step.completed"),
             completed_stage_key=os.getenv("RABBITMQ_COMPLETED_STAGE_KEY", "assessment.stage.completed"),
             list_event_type=tuple(
                 item.strip()
                 for item in os.getenv(
                     "RABBITMQ_LIST_EVENT_TYPE",
-                    "platform.assessment.stage.requested,"
-                    "platform.scan.cancelled"
-                ).split(",")
-                if item.strip()
+                    "platform.assessment.stage.requested,platform.scan.cancelled"
+                ).split(",") if item.strip()
             ),
-            dlx=os.getenv("RABBITMQ_DLX", "vulnerability.assessment.dlx"),
-            dlq=os.getenv("RABBITMQ_DLQ", "vulnerability.assessment.dead.v2")
         )
 
 

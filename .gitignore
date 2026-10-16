@@ -8,3 +8,5 @@ data
 __pycache__/
 *.py[cod]
 .pytest_cache/
+# Non-secret deployment artifact, generated from Platform's messaging contract.
+*.messaging.env

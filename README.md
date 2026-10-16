@@ -31,8 +31,7 @@ uv export --locked --no-hashes --output-file requirements.txt
 
 ### 2. Cấu hình
 
-Sao chép `.env.example` thành `.env` (nếu chưa có), rồi cập nhật cấu hình phù hợp. File mẫu liệt kê cả các tùy chọn
-RabbitMQ, NVD và database pool:
+Sao chép `config/runtime.env.example` thành `.env` (nếu chưa có), rồi cập nhật cấu hình phù hợp. File mẫu chứa cấu hình kết nối và đường dẫn metadata do Platform sinh:
 
 ```dotenv
 DATABASE_URL=postgresql+psycopg://vuln:vuln_password@localhost:5432/lan_vuln
@@ -43,15 +42,15 @@ FLASK_HOST=127.0.0.1
 FLASK_PORT=8082
 ```
 
-Tạo database `lan_vuln`, user PostgreSQL và user RabbitMQ tương ứng trước khi chạy. User RabbitMQ cần quyền
-configure/read/write trên vhost `/`. `SCOPE_CHECK_URL` là cấu hình bắt buộc khi khởi tạo client NVD; thay bằng URL của
+Tạo database `lan_vuln`, user PostgreSQL và user RabbitMQ tương ứng trước khi chạy. User RabbitMQ cần các quyền
+cần thiết để kiểm tra thụ động, publish và consume trên cùng vhost với Platform. Platform là nơi duy nhất khai báo topology. `SCOPE_CHECK_URL` là cấu hình bắt buộc khi khởi tạo client NVD; thay bằng URL của
 hệ thống tích hợp (hiện chưa được gọi trong luồng xử lý). `NVD_API_KEY` có thể để trống.
 
-Mặc định service đọc `.env` ở thư mục gốc. Để dùng file khác, sao chép `.env.example` thành `.env.debug` và đặt
+Mặc định service đọc `.env` ở thư mục gốc. Để dùng file khác, sao chép `config/runtime.env.example` thành `.env.debug` và đặt
 `LAN_VULN_ENV_FILE` trước khi chạy. Đường dẫn tương đối được tính từ thư mục gốc dự án; đường dẫn tuyệt đối cũng được hỗ trợ.
 File được chọn thay thế `.env`, không trộn hai file; biến môi trường của process được ưu tiên. Nếu chỉ định file không tồn
 tại, service báo lỗi ngay. `.gitignore` có quy tắc bỏ qua các file `.env` và `.env.*` chưa được track
-(ngoại trừ `.env.example`).
+(ngoại trừ `.env.example`); ví dụ runtime được track ở `config/runtime.env.example`.
 
 PowerShell:
 
@@ -72,9 +71,47 @@ Khởi tạo bảng bằng `psql` (URL này dùng dạng PostgreSQL thông thư�
 psql "postgresql://vuln:vuln_password@localhost:5432/lan_vuln" -v ON_ERROR_STOP=1 -f sql/schema.sql
 ```
 
+### Cấu hình messaging do Platform sinh
+
+Lấy file `assessment.messaging.env` do **cùng bản phát hành Platform** sinh bằng:
+
+```bash
+# Chạy trong môi trường Python của Platform:
+python -m platform_service.messaging_setup export-env --service assessment > assessment.messaging.env
+```
+
+Phân phối file này vào Assessment và thêm đường dẫn vào `.env` (hoặc file được chọn bởi `LAN_VULN_ENV_FILE`):
+
+```dotenv
+RABBITMQ_CLIENT_ENV_FILE=assessment.messaging.env
+```
+
+Đường dẫn tương đối tính từ thư mục gốc Assessment. File sinh ra chứa đúng ba biến:
+`RABBITMQ_TOPOLOGY_VERSION`, `RABBITMQ_EXCHANGE`, `RABBITMQ_QUEUE`. Có thể inject trực tiếp
+các biến này vào process thay vì dùng file. Không còn giá trị exchange/queue mặc định riêng.
+Thiếu cấu hình, version không hỗ trợ hoặc biến môi trường xung đột với file sẽ báo lỗi ngay.
+File metadata không chứa URL hoặc mật khẩu; `RABBITMQ_URL` vẫn cấu hình riêng và phải trỏ tới
+**cùng broker/vhost với Platform và Discovery** (có thể dùng user/password riêng).
+
+Xóa các biến cũ `RABBITMQ_EXCHANGE_TYPE`, `RABBITMQ_REQUEST_BINDING`,
+`RABBITMQ_CANCEL_BINDING`, `RABBITMQ_DLX`, `RABBITMQ_DLQ`; chúng không còn hợp lệ.
+Platform quản lý binding, exchange type, durability và dead-letter arguments. Nack không requeue
+đưa message về DLX/DLQ chung do Platform khai báo, không có cơ chế tự động retry DLQ.
+
+Trong Docker, inject file bằng `--env-file assessment.messaging.env` cùng với file cấu hình
+kết nối. Nếu `.env.docker` đặt `RABBITMQ_CLIENT_ENV_FILE`, cần mount file vào container
+và đặt đường dẫn trong container thay vì đường dẫn trên host.
+
+Worker retry mỗi 5 giây khi exchange/queue chưa được Platform tạo (404). Lỗi quyền,
+authentication hoặc cấu hình không tương thích sẽ dừng worker để xử lý. Preflight chỉ xác nhận
+resource tồn tại; nó không kiểm chứng binding hoặc queue arguments. Việc đó do Platform
+bootstrap thực hiện. Nếu broker đang giữ queue với DLX cũ, bootstrap sẽ từ chối (406): dừng
+worker cũ, kiểm tra/drain/archive message theo kế hoạch rồi chuyển đổi trong maintenance window,
+hoặc dùng vhost mới cho dữ liệu thử nghiệm. Không tự động xóa/purge queue.
+
 ### 3. Khởi chạy
 
-Khởi tạo exchange/queue RabbitMQ, sau đó chạy worker:
+Platform phải bootstrap exchange/queue trước khi chạy worker. Lệnh `setup` của Assessment chỉ kiểm tra thụ động, không tạo hoặc bind queue:
 
 ```powershell
 uv run --locked python -m app.common.messaging.setup
@@ -95,15 +132,15 @@ uv run --locked python -m app.api
 
 1. Chạy `uv sync --locked`, cài các extension **Python** và **Python Debugger** được workspace đề xuất.
 2. Chọn interpreter `.venv` qua **Python: Select Interpreter** nếu VS Code chưa chọn tự động.
-3. Mở **Run and Debug**, chọn profile **LAN Vuln: Worker**, **LAN Vuln: API** hoặc **LAN Vuln: RabbitMQ setup** rồi nhấn F5.
+3. Mở **Run and Debug**, chọn profile **LAN Vuln: Worker**, **LAN Vuln: API** hoặc **LAN Vuln: RabbitMQ preflight** rồi nhấn F5.
    Profile **LAN Vuln: Worker + API** chạy cả hai process; dừng debug sẽ dừng cả hai.
 4. Nhập đường dẫn file cấu hình tính từ workspace khi được hỏi, ví dụ `.env` (mặc định), `.env.debug` hoặc `config/local.env`.
-   Chuẩn bị file này từ `.env.example` và sửa giá trị trước khi debug.
+   Chuẩn bị file này từ `config/runtime.env.example` và sửa giá trị trước khi debug.
 
 Các profile trong [`.vscode/launch.json`](.vscode/launch.json) dùng module entry point và thư mục gốc làm working directory.
 Có thể đổi giá trị `default` của input `envFile` để nhớ file cấu hình thường dùng, hoặc thêm biến vào `env` của từng profile
 để ghi đè giá trị trong file. VS Code nạp `envFile` vào process trước khi ứng dụng chạy; các giá trị này ưu tiên hơn biến
-môi trường kế thừa từ terminal. RabbitMQ setup chỉ chạy khi chọn profile tương ứng; hãy khởi tạo topology trước khi chạy worker.
+môi trường kế thừa từ terminal. RabbitMQ preflight chỉ chạy khi chọn profile tương ứng; hãy bootstrap topology từ Platform trước khi chạy worker.
 
 ### 5. Kiểm tra
 
@@ -112,7 +149,7 @@ uv run --locked pytest
 ```
 
 Một số test hiện có cần PostgreSQL và dữ liệu CPE phù hợp trong database. Các test cấu hình không cần dịch vụ ngoài:
-`uv run --locked pytest test/test_config.py`.
+`uv run --locked pytest test/test_config.py test/test_messaging_topology.py`.
 
 ## Chạy bằng Docker
 
@@ -127,6 +164,9 @@ docker build -t lan-vuln-service .
 ```
 
 ### 2. Cấu hình kết nối
+
+Ví dụ Docker bên dưới inject metadata trực tiếp từ `assessment.messaging.env`: bỏ
+`RABBITMQ_CLIENT_ENV_FILE` khỏi `.env.docker` để không yêu cầu mount file.
 
 Tạo file `.env.docker` với các biến như `.env`. Nếu PostgreSQL/RabbitMQ chạy trên máy host và dùng Docker Desktop, đổi
 `localhost` thành `host.docker.internal` trong các URL:
@@ -148,13 +188,13 @@ Nếu các dịch vụ phụ thuộc chạy trong container cùng Docker network
 ### 3. Chạy worker
 
 ```powershell
-docker run -d --name lan-vuln-worker --env-file .env.docker lan-vuln-service
+docker run -d --name lan-vuln-worker --env-file .env.docker --env-file assessment.messaging.env lan-vuln-service
 ```
 
 Chạy API bằng cùng image, ghi đè lệnh mặc định, chưa cần chạy thì thôi:
 
 ```powershell
-docker run -d --name lan-vuln-api --env-file .env.docker -e FLASK_HOST=0.0.0.0 -e FLASK_PORT=8082 -p 127.0.0.1:8082:8082 lan-vuln-service python -m app.api
+docker run -d --name lan-vuln-api --env-file .env.docker --env-file assessment.messaging.env -e FLASK_HOST=0.0.0.0 -e FLASK_PORT=8082 -p 127.0.0.1:8082:8082 lan-vuln-service python -m app.api
 ```
 
 Truy cập API tại `http://localhost:8082/health`. API dùng Flask development server, phù hợp để chạy thử local.

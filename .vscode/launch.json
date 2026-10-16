@@ -30,7 +30,7 @@
             }
         },
         {
-            "name": "LAN Vuln: RabbitMQ setup",
+            "name": "LAN Vuln: RabbitMQ preflight",
             "type": "debugpy",
             "request": "launch",
             "module": "app.common.messaging.setup",
