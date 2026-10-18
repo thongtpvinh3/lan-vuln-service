@@ -21,10 +21,30 @@ bus = RabbitEventBus(RabbitMQConfig.from_env())
 setup_logging()
 
 def handle_assessment(event):
+    """Validate a request, run the three assessment steps, and publish completion.
+
+    Args:
+        event (dict): Assessment envelope containing scan_id and
+            data.stage_run_id/inputs.
+
+    Returns:
+        None: No return value.
+    """
     validate_request(event)
     context = {"step": "cve_matching"}
 
     def completed(step, result, **details):
+        """Publish a successful step report for the enclosing request.
+
+        Args:
+            step (str): Assessment step name.
+            result (dict): Step output to include in the report.
+            **details (Any): Additional report keywords such as seq, duration_ms, and
+                warnings.
+
+        Returns:
+            None: No return value.
+        """
         publish_step_completed(event, step, result, **details)
 
     run_cve_matching(event, completed)
@@ -39,6 +59,14 @@ def handle_assessment(event):
 
 
 def handle_scan_cancelled(event):
+    """Log a scan cancellation request; cancellation state is not yet persisted.
+
+    Args:
+        event (dict): Cancellation envelope containing scan_id.
+
+    Returns:
+        None: No return value.
+    """
     scan_id = event["scan_id"]
     logger.info("Received scan cancellation: scan_id=%s", scan_id)
 
@@ -46,6 +74,11 @@ def handle_scan_cancelled(event):
 
 
 def main():
+    """Start background catalog fetchers and consume assessment events until stopped.
+
+    Returns:
+        None: No return value.
+    """
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s", )
     cpe_fetcher = CpeAutoFetcher()
     cpe_fetcher.start()

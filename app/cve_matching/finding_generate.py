@@ -3,6 +3,19 @@ from app.cve_matching.matching import get_cvss
 
 
 def build_finding(software: dict, cpe_name: str, cve: dict, status: str) -> dict:
+    """Combine software, CVE severity, resolution details, and evidence into a finding.
+
+    Args:
+        software (dict): Normalized software record containing service, product,
+            version, and resolution metadata.
+        cpe_name (str): Official or virtual CPE evaluated for the observed software.
+        cve (dict): NVD CVE record with id and optional metrics.
+        status (str): Applicability classification, normally POTENTIAL or NEEDS_REVIEW.
+
+    Returns:
+        dict: CVE finding with endpoint identity, score, status, and NVD reference
+            evidence.
+    """
     service = software["service"]
     cve_id = cve["id"]
     cvss = get_cvss(cve)

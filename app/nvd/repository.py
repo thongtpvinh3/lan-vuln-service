@@ -7,6 +7,15 @@ from app.common.database import db
 
 
 def get_cache(key: str, ttl_hours: int):
+    """Read a cached NVD payload only if its fetch time satisfies the TTL.
+
+    Args:
+        key (str): Exact NVD cache key.
+        ttl_hours (int): Maximum allowed age of the cached response in hours.
+
+    Returns:
+        Any | None: Stored JSON payload, or None for a missing or expired cache entry.
+    """
     with db.connect() as conn:
         row = conn.execute(
             text("SELECT payload, fetched_at FROM vuln_nvd_cache WHERE cache_key = :key"),
@@ -23,6 +32,15 @@ def get_cache(key: str, ttl_hours: int):
 
 
 def save_cache(key: str, payload):
+    """Insert or replace an NVD cache payload and reset its fetch timestamp.
+
+    Args:
+        key (str): Unique NVD cache key.
+        payload (Any): JSON-serializable response data to persist.
+
+    Returns:
+        None: No return value.
+    """
     with db.transaction() as conn:
         conn.execute(
             text("""

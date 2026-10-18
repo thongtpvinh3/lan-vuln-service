@@ -20,11 +20,21 @@ class MisconfigRuleNormalizationService:
     """
 
     def __init__(self):
+        """Create the rule repository and mapping-based normalizer.
+
+        Returns:
+            None: No return value.
+        """
         self.repository = MisconfigRuleRepository()
         self.normalizer = MisconfigRuleNormalizer()
 
     @staticmethod
     def _empty_result() -> dict:
+        """Build a zero-count normalization summary for empty work.
+
+        Returns:
+            dict: Zeroed input, mapping, normalization, persistence, and status counts.
+        """
         return {
             "total": 0,
             "mapped": 0,
@@ -38,6 +48,15 @@ class MisconfigRuleNormalizationService:
 
     @staticmethod
     def _mapping_key(record: dict) -> tuple:
+        """Identify the exact source content shared by a rule and reviewed mapping.
+
+        Args:
+            record (dict): Rule or mapping containing source_id, source_file, and
+                content_sha256.
+
+        Returns:
+            tuple: source_id, source_file, and content_sha256 identity.
+        """
         return (
             record["source_id"],
             record["source_file"],
@@ -45,6 +64,21 @@ class MisconfigRuleNormalizationService:
         )
 
     def run(self, revision: str, source_files: list[str]) -> dict:
+        """Load committed rules, match reviewed mappings, normalize, and persist generated
+        specifications.
+
+        Require every requested source file to exist and reject duplicate reviewed
+        mappings.
+
+        Args:
+            revision (str): Git revision of the committed source rules.
+            source_files (list[str]): Repository-relative paths to normalize,
+                deduplicated before loading.
+
+        Returns:
+            dict: Input and saved normalization counts; empty input returns a zero-count
+                summary.
+        """
         summary = self._empty_result()
         if not source_files:
             return summary

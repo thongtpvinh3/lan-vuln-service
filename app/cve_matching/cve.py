@@ -13,6 +13,19 @@ logger = logging.getLogger(__name__)
 
 
 def match_cves(resolved, catalog=None):
+    """Query candidate CVEs, check applicability, and deduplicate findings per service and
+    CVE.
+
+    Args:
+        resolved (list[tuple[dict, str]]): Normalized software and evaluated CPE name
+            pairs.
+        catalog (NvdCatalog | None): Candidate CVE provider; None creates a catalog
+            using cache and NVD.
+
+    Returns:
+        list[dict]: Potential or review-required findings; rejected CVEs and definite
+            mismatches are omitted.
+    """
     catalog = catalog or NvdCatalog()
     findings = {}
     cve_cache = {}
@@ -68,6 +81,15 @@ def match_cves(resolved, catalog=None):
 
 
 def _same_product(item, cpe_name):
+    """Compare CPE part, vendor, and product while allowing criterion wildcards.
+
+    Args:
+        item (dict): NVD CPE match record containing criteria.
+        cpe_name (str): Evaluated CPE 2.3 name.
+
+    Returns:
+        bool: True if all three identity fields match; False for malformed CPE strings.
+    """
     expected = item.get("criteria", "").split(":")
     actual = cpe_name.split(":")
 
@@ -78,6 +100,15 @@ def _same_product(item, cpe_name):
 
 # tìm các điều kiện CPE ở mọi độ sâu
 def _iter_matches(node):
+    """Traverse CPE match entries in a configuration node and its descendants.
+
+    Args:
+        node (dict): NVD configuration node with cpeMatch entries and optional child
+            nodes.
+
+    Returns:
+        Iterator[dict]: Generator yielding each cpeMatch record in traversal order.
+    """
     for item in node.get("cpeMatch", []):
         yield item
 
@@ -86,6 +117,16 @@ def _iter_matches(node):
 
 
 def _match_status(cve, cpe_name):
+    """Classify matching vulnerable criteria, requiring review for complex configurations.
+
+    Args:
+        cve (dict): NVD CVE record containing configurations.
+        cpe_name (str): Evaluated CPE 2.3 name with the observed version.
+
+    Returns:
+        str | None: POTENTIAL for a definite simple match, NEEDS_REVIEW for uncertainty,
+            or None for no candidate match.
+    """
     potential = False
     needs_review = False
 

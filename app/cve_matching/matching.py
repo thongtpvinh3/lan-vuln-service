@@ -11,6 +11,16 @@ from packaging.version import Version, InvalidVersion
 
 
 def compare_versions(a, b):
+    """Compare numeric or OpenSSH-style versions, falling back to packaging.version.
+
+    Args:
+        a (str): First version string.
+        b (str): Second version string.
+
+    Returns:
+        int | None: -1, 0, or 1 when a is lower, equal, or higher; None if parsing
+            fails.
+    """
     pattern = r"(\d+(?:\.\d+)*)(?:p(\d+))?"
 
     ma = re.fullmatch(pattern, a, re.IGNORECASE)
@@ -38,11 +48,16 @@ def compare_versions(a, b):
 
 
 def check_criterion(criterion, cpe_name):
-    """
-    Return:
-        True  = tiêu chí phù hợp
-        False = tiêu chí không phù hợp
-        None  = chưa đủ thông tin
+    """Check product identity, version bounds, and remaining CPE fields.
+
+    Args:
+        criterion (dict): NVD criteria string with optional inclusive or exclusive
+            version bounds.
+        cpe_name (str): Evaluated CPE 2.3 name with the observed version.
+
+    Returns:
+        bool | None: True for a match, False for a definite mismatch, or None when
+            applicability cannot be determined.
     """
     expected = criterion["criteria"].split(":")
     actual = cpe_name.split(":")
@@ -95,10 +110,18 @@ def check_criterion(criterion, cpe_name):
 
 
 def match_cve(cve, cpe_name):
-    """
-    V1 kiểm tra các vulnerable cpeMatch.
-    Các cấu hình AND / negate chưa được xác minh
-    hoàn toàn sẽ được đánh dấu NEEDS_REVIEW.
+    """Evaluate direct vulnerable criteria, marking complex or uncertain configurations for
+    review.
+
+    Nested nodes, AND operators, and negation are not fully verified by this helper.
+
+    Args:
+        cve (dict): NVD CVE record containing configurations.
+        cpe_name (str): Evaluated CPE 2.3 name.
+
+    Returns:
+        str | None: POTENTIAL, NEEDS_REVIEW, or None if no direct vulnerable criterion
+            matches.
     """
     results = []
 
@@ -138,7 +161,14 @@ def match_cve(cve, cpe_name):
 
 
 def _severity_from_score(score):
-    """các ngưỡng CVSS chuẩn của FIRST"""
+    """Map a CVSS base score to its severity label.
+
+    Args:
+        score (float | None): CVSS base score; None means no score is available.
+
+    Returns:
+        str: UNKNOWN, NONE, LOW, MEDIUM, HIGH, or CRITICAL.
+    """
 
     if score is None: return "UNKNOWN"
     if score == 0: return "NONE"
@@ -149,7 +179,15 @@ def _severity_from_score(score):
 
 
 def get_cvss(cve: dict) -> dict:
-    """Lấy các chỉ số CVSS được ưu tiên từ NVD"""
+    """Select the newest valid CVSS metric, preferring NVD and primary records.
+
+    Args:
+        cve (dict): NVD CVE record with optional metrics for CVSS 4.0, 3.1, 3.0, or 2.0.
+
+    Returns:
+        dict: Score, severity, version, vector, source, and type; missing metrics
+            produce an unknown score.
+    """
 
     metrics = cve.get("metrics") or {}
 

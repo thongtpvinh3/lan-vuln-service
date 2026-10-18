@@ -20,6 +20,20 @@ class MisconfigRuleSync:
             repository: MisconfigRuleRepository | None = None,
             batch_size: int = 200,
     ):
+        """Configure the repository fetcher, persistence repository, and positive batch
+        size.
+
+        Args:
+            fetcher (MisconfigRuleFetcher | None): Source checkout manager; None creates
+                the default fetcher.
+            repository (MisconfigRuleRepository | None): Rule persistence repository;
+                None creates the default repository.
+            batch_size (int): Positive number of source records per committed batch;
+                defaults to 200.
+
+        Returns:
+            None: No return value.
+        """
         if batch_size <= 0:
             raise ValueError("batch_size must be positive")
 
@@ -29,7 +43,17 @@ class MisconfigRuleSync:
 
     @staticmethod
     def _validate_records(rule_paths: list, records: list[dict]) -> None:
-        """Ensure all discovered source files are preserved."""
+        """Require a complete, unique, disabled catalog with raw source and checksums.
+
+        Args:
+            rule_paths (list[Path]): Discovered source files expected in the prepared
+                catalog.
+            records (list[dict]): Parsed or raw-only records to validate.
+
+        Returns:
+            None: Validation succeeded; invalid or incomplete catalogs raise
+                RuntimeError.
+        """
 
         if not rule_paths:
             raise RuntimeError("No ComplianceAsCode rules discovered")
@@ -54,6 +78,16 @@ class MisconfigRuleSync:
 
     @staticmethod
     def _parse_statistics(records: list[dict], errors: list[dict]) -> dict:
+        """Count catalog parse states and metadata errors.
+
+        Args:
+            records (list[dict]): Prepared rule records containing parse_status.
+            errors (list[dict]): Per-file metadata parsing errors.
+
+        Returns:
+            dict: Counts for parsed, provisional, raw_only, not_processed, and
+                metadata_errors.
+        """
         statuses = Counter(record["parse_status"] for record in records)
 
         return {
@@ -65,16 +99,15 @@ class MisconfigRuleSync:
         }
 
     def sync(self) -> dict:
-        """
-        Phương thức này làm những việc sau:
-            - Khởi tạo các module cần thiết.
-            - Tải hoặc cập nhật repository.
-            - Lấy revision và danh sách rule.
-            - Parse metadata, giữ bản gốc khi parse lỗi.
-            - Kiểm tra tính đầy đủ và duy nhất của dữ liệu.
-            - Lưu PostgreSQL theo batch.
-            - Ghi nhận kết quả đồng bộ.
-            - Trả về thống kê để sử dụng cho logging, CLI hoặc auto_fetch.py.
+        """Fetch source rules, preserve metadata and raw content, and normalize committed
+        batches.
+
+        Wait for normalization, verify catalog completeness, and persist synchronization
+        status. Failures are logged and returned in the summary.
+
+        Returns:
+            dict: Source revision, import counts, optional normalization summary,
+                SUCCESS/PARTIAL/FAILED catalog sync status, timing, and error details.
         """
 
         started = time.perf_counter()

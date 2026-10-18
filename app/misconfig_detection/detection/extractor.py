@@ -11,6 +11,16 @@ logger = logging.getLogger(__name__)
 
 class MisconfigEvidenceExtractor:
     def extract(self, request: dict) -> dict:
+        """Validate Discovery devices and attach snapshots by canonical IP address.
+
+        Args:
+            request (dict): Assessment envelope, inputs wrapper, or direct Discovery
+                payload.
+
+        Returns:
+            dict: scan_id, top-level stage_run_id, device evidence, and
+                unmatched_snapshots. The stage_run_id is read from the request root.
+        """
         if not isinstance(request, dict):
             raise ValueError("Assessment request must be an object")
 
@@ -74,11 +84,16 @@ class MisconfigEvidenceExtractor:
 
     @staticmethod
     def _get_inputs(request: dict) -> dict:
-        """
-        Supported formats:
-            1. request["data"]["inputs"]
-            2. request["inputs"]
-            3. request itself
+        """Locate Discovery input data in a supported request wrapper.
+
+        Accept data.inputs, data, inputs, or the request itself; reject non-object
+        inputs.
+
+        Args:
+            request (dict): Assessment envelope or direct Discovery payload.
+
+        Returns:
+            dict: Discovery payload containing devices and snapshots.
         """
 
         if "data" in request:
@@ -103,6 +118,15 @@ class MisconfigEvidenceExtractor:
 
     @classmethod
     def _validate_ip(cls, value, field: str) -> str:
+        """Validate and canonicalize an IP string; raise ValueError for invalid input.
+
+        Args:
+            value (Any): Candidate IP value; must be a string.
+            field (str): Field path included in validation errors.
+
+        Returns:
+            str: Canonical IPv4 or IPv6 address.
+        """
         if not isinstance(value, str):
             raise ValueError(f"{field} must be an IP address")
 
@@ -112,6 +136,15 @@ class MisconfigEvidenceExtractor:
             raise ValueError(f"Invalid {field}: {value}") from exc
 
     def _extract_device(self, device: dict, index: int) -> dict:
+        """Validate one device and copy its OS, ports, and canonical IP.
+
+        Args:
+            device (dict): Raw Discovery device record.
+            index (int): Device index used in validation errors.
+
+        Returns:
+            dict: Device evidence with an initially empty snapshots list.
+        """
         if not isinstance(device, dict):
             raise ValueError(f"devices[{index}] must be an object")
 
@@ -142,6 +175,16 @@ class MisconfigEvidenceExtractor:
 
     @staticmethod
     def _extract_port(port: dict, device_index: int, port_index: int) -> dict:
+        """Validate one port record and copy its service and metadata.
+
+        Args:
+            port (dict): Raw Discovery port record.
+            device_index (int): Parent device index used in validation errors.
+            port_index (int): Port index used in validation errors.
+
+        Returns:
+            dict: Port, protocol, state, service, and metadata evidence.
+        """
         if not isinstance(port, dict):
             raise ValueError(f"devices[{device_index}].ports[{port_index}] must be an object")
 
@@ -162,6 +205,15 @@ class MisconfigEvidenceExtractor:
         }
 
     def _extract_snapshot(self, snapshot: dict, index: int, ) -> dict:
+        """Validate the snapshot IP and preserve configuration and extra metadata.
+
+        Args:
+            snapshot (dict): Raw Discovery configuration snapshot.
+            index (int): Snapshot index used in validation errors.
+
+        Returns:
+            dict: Canonical IP, source, raw_config, and metadata.
+        """
         if not isinstance(snapshot, dict):
             raise ValueError(f"snapshots[{index}] must be an object")
 

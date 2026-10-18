@@ -9,7 +9,17 @@ class MisconfigRuleEngine:
     """Đối chiếu từng rule với dữ liệu của một thiết bị."""
 
     def evaluate(self, device: dict, rule: dict) -> dict:
-        """Đánh giá rule và trả MATCH, NO_MATCH, UNKNOWN hoặc NOT_APPLICABLE."""
+        """Check OS applicability and evaluate a supported network service rule.
+
+        Args:
+            device (dict): Normalized device evidence containing ip, os, and ports.
+            rule (dict): Rule record with identifiers and a normalized_rule
+                specification.
+
+        Returns:
+            dict: Evaluation with device and rule IDs, status, reason, and optional
+                evidence.
+        """
         spec = rule.get("normalized_rule")
         if not isinstance(spec, dict):
             return self._result(device, rule, "UNKNOWN", "Invalid normalized rule")
@@ -41,7 +51,22 @@ class MisconfigRuleEngine:
         return self._evaluate_service_present(device, rule, condition)
 
     def _evaluate_service_enabled(self, device: dict, rule: dict, condition: dict) -> dict:
-        """Đối chiếu service mở trên mạng với yêu cầu của rule."""
+        """Compare confirmed open services with the required enabled state.
+
+        Missing matching exposure yields UNKNOWN because it cannot prove a service is
+        disabled.
+
+        Args:
+            device (dict): Normalized device evidence containing ip, os, and ports.
+            rule (dict): Rule record with identifiers and a normalized_rule
+                specification.
+            condition (dict): Service name, expected boolean enabled state, and optional
+                protocol.
+
+        Returns:
+            dict: Evaluation with device and rule IDs, status, reason, and optional
+                evidence.
+        """
         name = condition.get("service")
         expected = condition.get("expected")
         if not isinstance(name, str) or not name.strip():
@@ -91,7 +116,16 @@ class MisconfigRuleEngine:
 
     @staticmethod
     def _check_applicability(device: dict, applicability: dict) -> bool | None:
-        """Kiểm tra rule có áp dụng cho hệ điều hành của thiết bị hay không."""
+        """Check whether the observed OS family is allowed by the rule.
+
+        Args:
+            device (dict): Normalized device evidence containing ip, os, and ports.
+            applicability (dict): Rule applicability with a nonempty os_families list.
+
+        Returns:
+            bool | None: True for an allowed family, False for a different family, or
+                None for missing or invalid applicability evidence.
+        """
         # if applicability.get("verified"):
         #     return None
 
@@ -114,7 +148,21 @@ class MisconfigRuleEngine:
         return family.strip().lower() in allowed
 
     def _evaluate_service_present(self, device: dict, rule: dict, condition: dict) -> dict:
-        """Phát hiện dịch vụ bị cấm đang thực sự mở trên mạng."""
+        """Detect forbidden open services by protocol and service name.
+
+        Return UNKNOWN when no exposure is confirmed or the condition is unsupported.
+
+        Args:
+            device (dict): Normalized device evidence containing ip, os, and ports.
+            rule (dict): Rule record with identifiers and a normalized_rule
+                specification.
+            condition (dict): SERVICE_PRESENT condition with protocol and service_names;
+                product_names is unsupported.
+
+        Returns:
+            dict: Evaluation with device and rule IDs, status, reason, and optional
+                evidence.
+        """
         protocol = condition.get("protocol")
         service_names = condition.get("service_names")
 
@@ -173,7 +221,20 @@ class MisconfigRuleEngine:
         reason: str,
         evidence: dict | None = None
     ) -> dict:
-        """Tạo cấu trúc kết quả đánh giá thống nhất."""
+        """Build a consistent device-rule evaluation result.
+
+        Args:
+            device (dict): Normalized device evidence containing ip, os, and ports.
+            rule (dict): Rule record with identifiers and a normalized_rule
+                specification.
+            status (str): MATCH, NO_MATCH, UNKNOWN, or NOT_APPLICABLE.
+            reason (str): Explanation of the evaluation outcome.
+            evidence (dict | None): Supporting endpoint evidence; defaults to None.
+
+        Returns:
+            dict: Evaluation with device and rule IDs, status, reason, and optional
+                evidence.
+        """
         return {
             "device_ip": device.get("ip"),
             "normalized_rule_id": rule.get("id"),

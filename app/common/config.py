@@ -8,7 +8,14 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
 
 def load_environment() -> None:
-    """Load the selected dotenv file without replacing process environment values."""
+    """Load the selected dotenv file while preserving process environment values.
+
+    Relative paths resolve from the project root. An explicitly selected missing file
+    raises FileNotFoundError; a missing default .env is allowed.
+
+    Returns:
+        None: No return value.
+    """
     custom_file = os.getenv("LAN_VULN_ENV_FILE")
     env_file = Path(custom_file).expanduser() if custom_file else Path(".env")
     if not env_file.is_absolute():
@@ -34,6 +41,12 @@ class ServiceConfig:
 
     @classmethod
     def from_env(cls) -> "ServiceConfig":
+        """Build service and NVD settings from the loaded environment.
+
+        Returns:
+            ServiceConfig: Parsed settings, with defaults for optional environment
+                variables.
+        """
         return cls(
             scope_check_url=os.environ["SCOPE_CHECK_URL"],
             nvd_client_url=os.getenv("NVD_CLIENT_URL", "https://services.nvd.nist.gov/rest/json"),
@@ -62,6 +75,12 @@ class RabbitMQConfig:
 
     @classmethod
     def from_env(cls) -> "RabbitMQConfig":
+        """Build RabbitMQ routing and connection settings from the loaded environment.
+
+        Returns:
+            RabbitMQConfig: Parsed settings, with defaults for optional environment
+                variables.
+        """
         return cls(
             url=os.environ["RABBITMQ_URL"],
             exchange=os.getenv("RABBITMQ_EXCHANGE", "lan_scanner"),
@@ -97,6 +116,12 @@ class DatabaseConfig:
 
     @classmethod
     def from_env(cls) -> "DatabaseConfig":
+        """Build database connection pool settings from the loaded environment.
+
+        Returns:
+            DatabaseConfig: Parsed settings, with defaults for optional environment
+                variables.
+        """
         return cls(
             url=os.environ["DATABASE_URL"],
             pool_size=int(os.getenv("DB_POOL_SIZE", 5)),

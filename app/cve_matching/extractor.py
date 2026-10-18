@@ -6,12 +6,28 @@ logger = logging.getLogger(__name__)
 
 
 def _text(value):
+    """Trim a string and discard empty or non-string values.
+
+    Args:
+        value (Any): Raw value to inspect.
+
+    Returns:
+        str | None: Nonempty trimmed text, or None.
+    """
     if isinstance(value, str):
         return value.strip() or None
     return None
 
 
 def _cpe_hints(value):
+    """Normalize one CPE hint or a list of hints into nonempty strings.
+
+    Args:
+        value (Any): CPE hint string, list, or unsupported raw value.
+
+    Returns:
+        list[str]: Trimmed string hints; unsupported input becomes an empty list.
+    """
     if isinstance(value, str): value = [value]
     if not isinstance(value, list): return []
     return [
@@ -22,6 +38,15 @@ def _cpe_hints(value):
 
 
 def _parse_raw_config(raw):
+    """Decode object-shaped JSON evidence while preserving unparsed text.
+
+    Args:
+        raw (Any): Raw configuration dictionary, JSON string, or unsupported value.
+
+    Returns:
+        dict: Original dictionary, decoded JSON object, raw text wrapper, or an empty
+            dictionary.
+    """
     if isinstance(raw, dict): return raw
     if not isinstance(raw, str): return {}
 
@@ -34,7 +59,16 @@ def _parse_raw_config(raw):
 
 
 def _extract_snapshots(snapshots):
-    """Index raw evidence by host without guessing the service."""
+    """Index raw snapshot evidence by host without inferring software identities.
+
+    Args:
+        snapshots (list[dict]): Discovery snapshots; malformed entries and missing IPs
+            are skipped.
+
+    Returns:
+        dict[str, list[dict]]: Host-to-evidence index containing source, port, and
+            raw_config.
+    """
 
     evidence_by_host = {}
 
@@ -56,6 +90,18 @@ def _extract_snapshots(snapshots):
 
 
 def _extract_services(devices, evidence_by_host):
+    """Build service observations from device ports and attach evidence for the same
+    endpoint.
+
+    Args:
+        devices (list[dict]): Discovery devices with IP addresses and port records.
+        evidence_by_host (dict[str, list[dict]]): Parsed snapshot evidence indexed by
+            host IP.
+
+    Returns:
+        list[dict]: Service fingerprint observations with host, product, version, and
+            supporting evidence.
+    """
     observations = []
 
     for device in devices:
@@ -102,6 +148,15 @@ def _extract_services(devices, evidence_by_host):
 
 
 def _extract_os(devices):
+    """Build OS fingerprint observations without treating labels as verified releases.
+
+    Args:
+        devices (list[dict]): Discovery devices with optional OS fingerprint
+            dictionaries.
+
+    Returns:
+        list[dict]: OS observations with no verified version and no network port.
+    """
     observations = []
 
     for device in devices:
@@ -133,6 +188,18 @@ def _extract_os(devices):
 
 
 def extract_software(request: dict) -> list[dict]:
+    """Extract distinct service and OS observations from Discovery devices.
+
+    Snapshots enrich observed endpoints; snapshots alone do not create software records.
+
+    Args:
+        request (dict): Assessment envelope containing scan_id and
+            data.stage_run_id/inputs.
+
+    Returns:
+        list[dict]: Observations deduplicated by host, port, protocol, product, version,
+            and source.
+    """
     inputs = request["data"]["inputs"]
 
     devices = inputs.get("devices") or []

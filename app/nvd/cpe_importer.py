@@ -15,6 +15,14 @@ NVD_CPE_URL = "https://services.nvd.nist.gov/rest/json/cpes/2.0"
 
 def parse_cpe(cpe_name: str) -> dict:
     # Split dấu ':' nhưng bỏ qua ':' đã được escape bằng '\'
+    """Split a CPE 2.3 name while respecting escaped colons; reject malformed names.
+
+    Args:
+        cpe_name (str): Complete CPE 2.3 formatted name with thirteen fields.
+
+    Returns:
+        dict: Parsed part, vendor, product, and version fields.
+    """
     fields = []
     current = []
     backslashes = 0
@@ -41,6 +49,15 @@ def parse_cpe(cpe_name: str) -> dict:
 
 
 def save_cpes(products: list):
+    """Insert NVD CPE products into the local dictionary, skipping existing IDs.
+
+    Args:
+        products (list[dict]): NVD product objects containing a cpe record and its
+            metadata.
+
+    Returns:
+        int: Number of inserted rows reported by the database, or zero for empty input.
+    """
     sql = text("""
                INSERT INTO vuln_cpe_dictionary (
                     cpe_name_id,
@@ -112,6 +129,17 @@ def save_cpes(products: list):
 
 
 def fetch_cpes(keyword: str | None = None, limit: int | None = 100, start_index: int = 0):
+    """Page through NVD CPE products with retries and save new dictionary entries.
+
+    Args:
+        keyword (str | None): Optional NVD keywordSearch filter.
+        limit (int | None): Target maximum new-row count; None fetches until results are
+            exhausted. Defaults to 100.
+        start_index (int): Initial NVD result offset; defaults to 0.
+
+    Returns:
+        int: Total newly inserted rows reported across fetched pages.
+    """
     config = ServiceConfig.from_env()
     headers = {"Accept": "application/json"}
     if config.nvd_api_key: headers["apiKey"] = config.nvd_api_key

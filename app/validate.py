@@ -1,4 +1,15 @@
 def validate_request(event):
+    """Validate the event name, scan and stage IDs, and Discovery input lists.
+
+    Raises ValueError if a required field is missing or an input list is invalid.
+
+    Args:
+        event (dict): Assessment envelope containing scan_id and
+            data.stage_run_id/inputs.
+
+    Returns:
+        None: The request passes the checks; the input dictionary is unchanged.
+    """
     if event.get("event") != "platform.assessment.stage.requested":
         raise ValueError("Invalid event type")
 

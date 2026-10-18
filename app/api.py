@@ -12,6 +12,12 @@ logger = logging.getLogger(__name__)
 
 @app.get("/health")
 def health():
+    """Check database connectivity for the health endpoint.
+
+    Returns:
+        flask.Response | tuple[flask.Response, int]: JSON health status; includes HTTP
+            503 when the database check fails.
+    """
     try:
         db.ping()
         return jsonify({
@@ -31,6 +37,15 @@ def health():
 
 @app.get("/api/v1/findings/<scan_id>")
 def findings(scan_id):
+    """Load the CVE findings exposed by the scan findings endpoint.
+
+    Args:
+        scan_id (str): Identifier of the scan whose records are being processed.
+
+    Returns:
+        flask.Response | tuple[flask.Response, int]: JSON findings and count, or an
+            error response with HTTP 500.
+    """
     try:
         results = get_findings(scan_id)
         return jsonify({

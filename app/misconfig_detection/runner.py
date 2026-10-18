@@ -12,6 +12,18 @@ logger = logging.getLogger(__name__)
 
 
 def run(request, completed):
+    """Normalize Discovery evidence, evaluate rules, save MATCH findings, and report
+    completion.
+
+    Args:
+        request (dict): Assessment envelope containing scan_id and
+            data.stage_run_id/inputs.
+        completed (Callable[..., None]): Callback receiving the step name, result
+            dictionary, and timing or warning keywords.
+
+    Returns:
+        None: No return value.
+    """
     started_at = perf_counter()
 
     # STEP 1: Trích xuất bằng chứng Discovery

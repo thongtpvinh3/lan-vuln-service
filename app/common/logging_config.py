@@ -6,6 +6,14 @@ from rich.text import Text
 
 class CompactLogFilter(logging.Filter):
     def filter(self, record: logging.LogRecord) -> bool:
+        """Attach a compact module and line location to a log record.
+
+        Args:
+            record (logging.LogRecord): Record to annotate in place with location.
+
+        Returns:
+            bool: Always True so the annotated record is emitted.
+        """
         module = ".".join(record.name.split(".")[-2:])
         if len(module) > 32: module = "…" + module[-31:]
         record.location = f"{module}:{record.lineno}"
@@ -22,6 +30,11 @@ class CompactRichHandler(logging.Handler):
     }
 
     def __init__(self):
+        """Initialize the Rich stderr console and timestamp formatter.
+
+        Returns:
+            None: No return value.
+        """
         super().__init__()
 
         self.console = Console(
@@ -36,6 +49,15 @@ class CompactRichHandler(logging.Handler):
         )
 
     def emit(self, record: logging.LogRecord):
+        """Render one compact log line and any exception traceback.
+
+        Args:
+            record (logging.LogRecord): Record with a location supplied by
+                CompactLogFilter.
+
+        Returns:
+            None: No return value.
+        """
         try:
             timestamp = self.formatter.formatTime(record, "%H:%M:%S")
             level = record.levelname
@@ -59,6 +81,14 @@ class CompactRichHandler(logging.Handler):
 
 
 def setup_logging(level: int = logging.INFO):
+    """Replace root handlers with compact Rich logging and quiet noisy clients.
+
+    Args:
+        level (int): Root logging threshold; defaults to logging.INFO.
+
+    Returns:
+        None: No return value.
+    """
     handler = CompactRichHandler()
     handler.addFilter(CompactLogFilter())
     root = logging.getLogger()

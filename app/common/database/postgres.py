@@ -9,6 +9,15 @@ from app.common.config import DatabaseConfig
 class Postgres:
 
     def __init__(self, config: DatabaseConfig):
+        """Create a SQLAlchemy engine with a lazily opened PostgreSQL connection pool.
+
+        Args:
+            config (DatabaseConfig): Database URL, pool limits, connection timeout, and
+                SQL logging settings.
+
+        Returns:
+            None: No return value.
+        """
         self.engine: Engine = create_engine(
             url=config.url,
             pool_size=config.pool_size,
@@ -22,18 +31,35 @@ class Postgres:
         )
 
     def connect(self):
-        """Get a connection for SELECT queries."""
+        """Acquire a connection for queries; callers should close it or use a with block.
+
+        Returns:
+            sqlalchemy.engine.Connection: Open connection checked out from the pool.
+        """
         return self.engine.connect()
 
     def transaction(self):
-        """Get a connection with an automatic commit / rollback."""
+        """Create a transaction context that commits on success and rolls back on error.
+
+        Returns:
+            contextlib.AbstractContextManager[sqlalchemy.engine.Connection]: Context
+                yielding a transactional connection.
+        """
         return self.engine.begin()
 
     def ping(self) -> bool:
-        """Check PostgreSQL connectivity."""
+        """Execute SELECT 1 to check connectivity; connection errors propagate.
+
+        Returns:
+            bool: True when the database returns 1.
+        """
         with self.connect() as conn:
             return conn.execute(text("SELECT 1")).scalar_one() == 1
 
     def close(self):
-        """Dispose idle connections in the pool."""
+        """Dispose idle connections managed by the engine.
+
+        Returns:
+            None: No return value.
+        """
         self.engine.dispose()

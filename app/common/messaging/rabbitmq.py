@@ -16,10 +16,24 @@ logger = logging.getLogger(__name__)
 class RabbitEventBus:
 
     def __init__(self, config: RabbitMQConfig):
+        """Store broker configuration and initialize an empty handler registry.
+
+        Args:
+            config (RabbitMQConfig): Broker URL, exchange, queue, bindings, and allowed
+                event types.
+
+        Returns:
+            None: No return value.
+        """
         self.config = config
         self.handlers = {}
 
     def _connect(self):
+        """Open a broker connection with heartbeat and socket timeouts.
+
+        Returns:
+            pika.BlockingConnection: New connection owned by the caller.
+        """
         params = pika.URLParameters(self.config.url)
         params.heartbeat = 60
         params.blocked_connection_timeout = 30
@@ -28,9 +42,16 @@ class RabbitEventBus:
         return pika.BlockingConnection(params)
 
     def publish(self, routing_key: str, event: BaseEvent):
-        """
-        Mở kết nối riêng, publish có confirm, sau đó đóng kết nối.
-        Không tự retry khi trạng thái xác nhận chưa rõ để tránh tạo event_id mới.
+        """Publish a persistent event with delivery confirmation and close its connection.
+
+        Uncertain confirmations are not automatically retried.
+
+        Args:
+            routing_key (str): Topic routing key used to publish the event.
+            event (BaseEvent): Event envelope to serialize as UTF-8 JSON.
+
+        Returns:
+            None: No return value.
         """
         connection = self._connect()
 
@@ -60,6 +81,16 @@ class RabbitEventBus:
             if connection.is_open: connection.close()
 
     def subscribe(self, event_type: str, handler):
+        """Register one handler for an allowed event type; reject duplicates.
+
+        Args:
+            event_type (str): Event name listed in the configured allowed event types.
+            handler (Callable[[dict], None]): Callback invoked with the decoded event
+                envelope.
+
+        Returns:
+            None: No return value.
+        """
         if event_type not in self.config.list_event_type:
             raise ValueError(f"Unsupported event type: {event_type}")
         if event_type in self.handlers:
@@ -68,6 +99,16 @@ class RabbitEventBus:
         logger.info("Registered handler for event=%s", event_type)
 
     def _dispatch(self, routing_key: str, body: bytes):
+        """Validate the decoded event and invoke its registered handler.
+
+        Args:
+            routing_key (str): Received routing key, which must equal the envelope event
+                name.
+            body (bytes): UTF-8 JSON event body.
+
+        Returns:
+            None: No return value.
+        """
         event = json.loads(body)
 
         if not isinstance(event, dict):
@@ -84,9 +125,13 @@ class RabbitEventBus:
         handler(event)
 
     def start(self):
-        """
-        Consumer kết nối lâu dài.
-        Handler chạy trong executor riêng. ACK/NACK được đưa về RabbitMQ I/O thread.
+        """Consume events with one worker and settle deliveries on the broker I/O thread.
+
+        Reconnect after broker or socket errors. Failed handlers are NACKed without
+        requeue; KeyboardInterrupt stops the consumer loop.
+
+        Returns:
+            None: Returns after the consumer is interrupted.
         """
         if not self.handlers: raise RuntimeError("No event handlers registered")
 
@@ -103,6 +148,21 @@ class RabbitEventBus:
                     channel.basic_qos(prefetch_count=1)
 
                     def on_message(ch, method, properties, body):
+                        """Submit a delivery to the worker and register its settlement
+                        callback.
+
+                        Args:
+                            ch (pika.adapters.blocking_connection.BlockingChannel): Channel
+                                receiving the delivery.
+                            method (pika.spec.Basic.Deliver): Delivery metadata containing
+                                routing key and delivery tag.
+                            properties (pika.BasicProperties): Message properties supplied
+                                by Pika; unused here.
+                            body (bytes): Serialized JSON event body.
+
+                        Returns:
+                            None: No return value.
+                        """
                         tag = method.delivery_tag
                         routing_key = method.routing_key
 
@@ -113,7 +173,28 @@ class RabbitEventBus:
                         future = executor.submit(self._dispatch, method.routing_key, body)
 
                         def on_done(result, consumer_conn=conn, consumer_ch=ch, delivery_tag=tag):
+                            """Schedule delivery settlement on the original connection I/O thread.
+
+                            Args:
+                                result (concurrent.futures.Future[None]): Completed event
+                                    handler task.
+                                consumer_conn (pika.BlockingConnection): Connection captured
+                                    when the delivery was received.
+                                consumer_ch (pika.adapters.blocking_connection.BlockingChannel):
+                                    Original delivery channel.
+                                delivery_tag (int): Captured delivery tag parameter; settlement
+                                    uses the enclosing tag.
+
+                            Returns:
+                                None: No return value.
+                            """
                             def settle():
+                                """ACK a successful task or NACK a failed task if its connection
+                                remains open.
+
+                                Returns:
+                                    None: No return value.
+                                """
                                 if not consumer_conn.is_open or not consumer_ch.is_open:
                                     logger.warning("Connection closed before settlement")
                                     return
@@ -147,8 +228,14 @@ class RabbitEventBus:
                     if connection and connection.is_open: connection.close()
 
     def _bind_queues(self, channel):
-        """
-        Bind queue theo RabbitMQConfig. Không bind theo self.handlers.
+        """Bind the inbox using configured request and cancellation routing patterns.
+
+        Args:
+            channel (pika.adapters.blocking_connection.BlockingChannel): Open channel
+                used to create bindings.
+
+        Returns:
+            None: No return value.
         """
         channel.queue_bind(
             queue=self.config.queue,

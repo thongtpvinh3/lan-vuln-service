@@ -9,6 +9,11 @@ logger = logging.getLogger(__name__)
 
 
 def refresh():
+    """Force refresh recognized CPE and official-CVE cache keys, logging per-key failures.
+
+    Returns:
+        None: No return value.
+    """
     catalog = NvdCatalog()
 
     with db.connect() as conn:

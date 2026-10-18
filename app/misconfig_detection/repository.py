@@ -132,7 +132,11 @@ class MisconfigRuleRepository:
     )
 
     def get_or_create_source(self) -> int:
-        """Register ComplianceAsCode and return its source ID."""
+        """Register or update the ComplianceAsCode source metadata.
+
+        Returns:
+            int: Database ID of the source row.
+        """
 
         sql = text("""
             INSERT INTO vuln_misconfig_source (
@@ -168,6 +172,17 @@ class MisconfigRuleRepository:
         return source_id
 
     def _prepare_record(self, record: dict, source_id: int) -> dict:
+        """Validate source fields and set database defaults while forcing imported rules
+        disabled.
+
+        Args:
+            record (dict): Parsed or raw-only source rule record.
+            source_id (int): Database ID of the registered ComplianceAsCode source.
+
+        Returns:
+            dict: Insert parameters with source ID, JSON defaults, and unprocessed
+                normalization state.
+        """
         params = {column: record.get(column) for column in self.RULE_COLUMNS}
         params["source_id"] = source_id
 
@@ -222,6 +237,19 @@ class MisconfigRuleRepository:
             batch_size: int = 200,
             on_batch_committed: Callable[[list[str]], None] | None = None,
     ) -> dict:
+        """Persist source rules in batches and notify the consumer after each successful
+        commit.
+
+        Args:
+            records (list[dict]): Parsed or raw-only source records to insert.
+            batch_size (int): Positive records per transaction; defaults to 200.
+            on_batch_committed (Callable[[list[str]], None] | None): Callback receiving
+                source_file paths after a batch commits; None disables notifications.
+
+        Returns:
+            dict: source_id and total, inserted, skipped, and failed counts; database or
+                callback errors propagate.
+        """
         if batch_size <= 0:
             raise ValueError("batch_size must be positive")
 
@@ -281,7 +309,18 @@ class MisconfigRuleRepository:
 
     @staticmethod
     def save_normalized_rules_with_mapping(records: list[dict], batch_size: int = 200) -> dict:
-        """Save normalized rules into vuln_misconfig_rule_normalized."""
+        """Insert or update validated normalized rules by rule and mapping identity in
+        batches.
+
+        Args:
+            records (list[dict]): Normalized specifications with source rule and mapping
+                IDs and JSON evidence fields.
+            batch_size (int): Positive records per transaction; defaults to 200.
+
+        Returns:
+            dict: total input, inserted, modified, and updated counts; updated is the
+                total saved count.
+        """
 
         if batch_size <= 0:
             raise ValueError("batch_size must be positive")
@@ -454,6 +493,20 @@ class MisconfigRuleRepository:
         }
 
     def update_sync_status(self, revision: str, status: str, error: str | None = None, ) -> None:
+        """Persist catalog synchronization state, retaining the last revision after
+        failures.
+
+        Args:
+            revision (str): Source revision; applied to last_revision for SUCCESS or
+                PARTIAL.
+            status (str): Catalog sync status SUCCESS, FAILED, or PARTIAL, normalized to
+                uppercase.
+            error (str | None): Synchronization error or partial-import explanation;
+                defaults to None.
+
+        Returns:
+            None: No return value.
+        """
         status = status.upper()
         if status not in {"SUCCESS", "FAILED", "PARTIAL"}:
             raise ValueError(f"Invalid sync status: {status}")
@@ -491,6 +544,16 @@ class MisconfigRuleRepository:
 
     @staticmethod
     def get_mappings_for_rules(rules: list[dict]) -> list[dict]:
+        """Load reviewed mappings for exact source identities without filtering enabled.
+
+        Args:
+            rules (list[dict]): Source rules containing source_id, source_file, and
+                content_sha256.
+
+        Returns:
+            list[dict]: Reviewed mapping rows ordered by id; empty input yields an empty
+                list.
+        """
         if not rules: return []
 
         keys = {
@@ -544,6 +607,17 @@ class MisconfigRuleRepository:
         return mappings
 
     def get_raw_normalized_rules(self, revision: str, source_files: list[str] | None = None) -> list[dict]:
+        """Load imported source records for a revision and optional source-file subset.
+
+        Args:
+            revision (str): Exact Git revision of the requested source rules.
+            source_files (list[str] | None): Optional repository-relative paths; None
+                loads the revision, while an empty list loads nothing.
+
+        Returns:
+            list[dict]: Source rule rows ordered by id, with parse state and raw
+                metadata.
+        """
         params = {
             "source_key": self.SOURCE_KEY,
             "revision": revision,
@@ -585,6 +659,12 @@ class MisconfigRuleRepository:
         return [dict(row) for row in rows]
 
     def get_supported_mappings(self) -> list[dict]:
+        """Load reviewed, enabled mappings for the ComplianceAsCode source.
+
+        Returns:
+            list[dict]: Mapping rows with identities, conditions, applicability, and
+                evidence requirements.
+        """
         sql = text("""
             SELECT
                 m.id,
@@ -615,7 +695,12 @@ class MisconfigRuleRepository:
 
     @staticmethod
     def get_enabled_normalized_rules() -> list[dict]:
-        """Lấy rule đã chuẩn hóa, không lọc enabled và execution_status."""
+        """Load every non-null normalized specification without filtering enabled or
+        execution status.
+
+        Returns:
+            list[dict]: Normalized rule rows ordered by id.
+        """
 
         sql = text("""
                    SELECT id,

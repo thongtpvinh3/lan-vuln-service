@@ -14,4 +14,9 @@ class BaseEvent:
     timestamp: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z"))
 
     def to_dict(self) -> dict:
+        """Serialize all event dataclass fields into a dictionary.
+
+        Returns:
+            dict: Event envelope including IDs, timestamp, schema version, and data.
+        """
         return asdict(self)

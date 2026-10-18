@@ -16,6 +16,15 @@ DEFAULT_MISCONFIG_RECOMMENDATION = "Review and harden the insecure configuration
 
 
 def recommend(findings: list[dict]) -> list[str]:
+    """Generate distinct remediation suggestions for CVE and misconfiguration findings.
+
+    Args:
+        findings (list[dict]): Findings with type and identifier fields.
+
+    Returns:
+        list[str]: Recommendations in first-seen order; unsupported finding types are
+            skipped.
+    """
     recommendations = []
 
     for finding in findings:

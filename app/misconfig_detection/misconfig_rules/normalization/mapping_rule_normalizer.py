@@ -30,6 +30,19 @@ class MisconfigRuleNormalizer:
         required_evidence: list | None = None,
         error: str | None = None,
     ) -> dict:
+        """Build a normalized-rule outcome, including review or support diagnostics.
+
+        Args:
+            status (str): SUPPORTED, UNSUPPORTED, or NEEDS_REVIEW.
+            normalized_rule (dict | None): Generated specification, if one can be built.
+            required_evidence (list | None): Required Discovery field paths; None
+                becomes an empty list.
+            error (str | None): Validation or support diagnostic; defaults to None.
+
+        Returns:
+            dict: execution_status, normalized_rule, required_evidence, and
+                validation_error.
+        """
         return {
             "execution_status": status,
             "normalized_rule": normalized_rule,
@@ -38,7 +51,19 @@ class MisconfigRuleNormalizer:
         }
 
     def normalize(self, rule: dict, mapping: dict | None) -> dict:
-        """Convert source rule + approved mapping into an internal normalized rule"""
+        """Validate a source rule and reviewed mapping, then classify its generated
+        specification.
+
+        Args:
+            rule (dict): Source rule metadata with parse state, identity, revision, and
+                checksum.
+            mapping (dict | None): Reviewed mapping for the exact source content, or
+                None if unavailable.
+
+        Returns:
+            dict: Normalization outcome with support status, optional specification,
+                evidence requirements, and validation error.
+        """
 
         # 1. Check source rule.
         if rule.get("deprecated"):

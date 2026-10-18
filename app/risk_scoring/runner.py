@@ -10,6 +10,17 @@ logger = logging.getLogger(__name__)
 
 
 def run(request, completed):
+    """Score findings, persist host risk summaries, and report finding scores and warnings.
+
+    Args:
+        request (dict): Assessment envelope containing scan_id and
+            data.stage_run_id/inputs.
+        completed (Callable[..., None]): Callback receiving the step name, result
+            dictionary, and timing or warning keywords.
+
+    Returns:
+        None: No return value.
+    """
     started_at = perf_counter()
 
     # STEP 1: ĐỌC DANH SÁCH LỖ HỔNG

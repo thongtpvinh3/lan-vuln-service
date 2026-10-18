@@ -11,6 +11,11 @@ logger = logging.getLogger(__name__)
 class MisconfigRuleAutoFetcher:
 
     def __init__(self):
+        """Read synchronization settings and create the sync service and thread stop state.
+
+        Returns:
+            None: No return value.
+        """
         self.enabled = (os.getenv("MISCONFIG_RULE_FETCH_ENABLED", "false").lower() == "true")
         self.interval_hours = float(os.getenv("MISCONFIG_RULE_SYNC_INTERVAL_HOURS", "24"))
 
@@ -22,6 +27,11 @@ class MisconfigRuleAutoFetcher:
         self._thread = None
 
     def _worker(self):
+        """Synchronize rules repeatedly until the stop event is set, logging failures.
+
+        Returns:
+            None: No return value.
+        """
         while not self._stop_event.is_set():
             try:
                 logger.info("Starting scheduled ComplianceAsCode sync")
@@ -40,7 +50,11 @@ class MisconfigRuleAutoFetcher:
         logger.info("ComplianceAsCode auto fetcher stopped")
 
     def start(self):
-        """Start background synchronization."""
+        """Start background synchronization if enabled and not already running.
+
+        Returns:
+            None: No return value.
+        """
         if not self.enabled:
             logger.info("ComplianceAsCode auto fetcher disabled")
             return
@@ -53,7 +67,11 @@ class MisconfigRuleAutoFetcher:
         logger.info("ComplianceAsCode auto fetcher started")
 
     def stop(self):
-        """Stop future scheduled runs."""
+        """Stop future scheduled runs and wait up to five seconds for the thread.
+
+        Returns:
+            None: No return value.
+        """
         self._stop_event.set()
         if self._thread and self._thread.is_alive():
             self._thread.join(timeout=5)

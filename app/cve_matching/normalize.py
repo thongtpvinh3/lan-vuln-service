@@ -10,7 +10,15 @@ MIN_MATCH_SCORE = 80
 
 
 def _parse_cpe(cpe: str) -> dict | None:
-    """Đọc định danh part/vendor/product từ CPE 2.2 hoặc 2.3."""
+    """Read concrete part, vendor, product, and version fields from CPE 2.2 or 2.3.
+
+    Args:
+        cpe (str): Candidate CPE identifier.
+
+    Returns:
+        dict | None: Parsed identity fields, or None for unsupported or incomplete
+            identifiers.
+    """
 
     if not isinstance(cpe, str): return None
     if cpe.startswith("cpe:2.3:"):
@@ -46,6 +54,16 @@ def _parse_cpe(cpe: str) -> dict | None:
 
 
 def normalize(service: dict) -> dict | None:
+    """Resolve an observation to an unambiguous dictionary product and observed version.
+
+    Args:
+        service (dict): Extracted software observation with product, version, and
+            optional CPE hints.
+
+    Returns:
+        dict | None: Software identity, service, version, and resolution method; None
+            for missing version, ambiguity, or insufficient match score.
+    """
     raw_product = service.get("product") or ""
     raw_version = service.get("version")
 

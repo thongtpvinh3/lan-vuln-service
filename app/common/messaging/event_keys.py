@@ -8,8 +8,3 @@ class EventKeys:
     STEP_COMPLETED = "assessment.step.completed"
     STAGE_COMPLETED = "assessment.stage.completed"
     STEP_FAILED = "assessment.step.failed"
-
-    # Vulnerability Findings
-    CVE_MATCHED = "vuln.cve.matched"
-    MISCONFIG_DETECTED = "vuln.misconfig.detected"
-    VERIFIED = "vuln.verified"

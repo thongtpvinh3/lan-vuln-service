@@ -10,6 +10,16 @@ logger = logging.getLogger(__name__)
 def load_findings(scan_id: str, stage_run_id: str) -> list[dict]:
 
     # 1. Lấy CVE findings từ F1
+    """Load candidate CVE findings and MATCH misconfigurations in a shared scoring format.
+
+    Args:
+        scan_id (str): Identifier of the scan whose records are being processed.
+        stage_run_id (str): Identifier of the assessment stage execution.
+
+    Returns:
+        list[dict]: Findings with stable IDs, host, type, identifier, score, severity,
+            and evidence.
+    """
     with db.connect() as conn:
         cve_rows = conn.execute(
             text("""
@@ -87,6 +97,18 @@ def load_findings(scan_id: str, stage_run_id: str) -> list[dict]:
 
 
 def save_results(scan_id: str, stage_run_id: str, results: list[dict]):
+    """Replace host risk summaries for one scan and stage, setting review status to
+    PENDING.
+
+    Args:
+        scan_id (str): Identifier of the scan whose records are being processed.
+        stage_run_id (str): Identifier of the assessment stage execution.
+        results (list[dict]): Host scores, levels, counts, and recommendations; an empty
+            list clears prior results.
+
+    Returns:
+        None: No return value.
+    """
     with db.transaction() as conn:
         # Xóa kết quả cũ của cùng lần chạy stage
         conn.execute(

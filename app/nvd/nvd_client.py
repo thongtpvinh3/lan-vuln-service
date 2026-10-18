@@ -9,6 +9,11 @@ logger = logging.getLogger(__name__)
 
 class NvdClient:
     def __init__(self):
+        """Create a reusable HTTP session with the configured NVD API key and rate state.
+
+        Returns:
+            None: No return value.
+        """
         self.session = requests.Session()
         self.last_request = 0.0
 
@@ -16,6 +21,16 @@ class NvdClient:
             self.session.headers["apiKey"] = service_config.nvd_api_key
 
     def get(self, endpoint, params):
+        """Request one NVD JSON page with rate spacing and bounded retries.
+
+        Args:
+            endpoint (str): Endpoint path relative to the configured NVD base URL.
+            params (dict): Query parameters for the request.
+
+        Returns:
+            dict: Decoded NVD JSON response; request or retry exhaustion errors
+                propagate.
+        """
         url = f"{service_config.nvd_client_url}/{endpoint}"
 
         for attempt in range(4):
@@ -50,6 +65,18 @@ class NvdClient:
         raise RuntimeError("NVD API failed after retries")
 
     def get_all(self, endpoint, params, result_key):
+        """Collect all items from a paginated NVD endpoint.
+
+        Args:
+            endpoint (str): Endpoint path relative to the configured NVD base URL.
+            params (dict): Base query parameters; pagination offsets and page size are
+                supplied internally.
+            result_key (str): Response field containing page items, such as products or
+                vulnerabilities.
+
+        Returns:
+            list[dict]: Items combined from every response page.
+        """
         results = []
         start = 0
 

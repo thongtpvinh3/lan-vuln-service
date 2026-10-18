@@ -25,7 +25,15 @@ class MisconfigEvidenceNormalizer:
     }
 
     def normalize(self, evidence: dict) -> dict:
-        """Chuẩn hóa toàn bộ bằng chứng sau bước Extractor"""
+        """Deep-copy extracted evidence and normalize each device for rule evaluation.
+
+        Args:
+            evidence (dict): Extracted evidence containing a devices list.
+
+        Returns:
+            dict: Evidence with normalized devices and preserved scan and snapshot
+                metadata.
+        """
         if not isinstance(evidence, dict):
             raise ValueError("Evidence must be a dictionary")
 
@@ -40,7 +48,14 @@ class MisconfigEvidenceNormalizer:
         return result
 
     def _normalize_device(self, device: dict) -> dict:
-        """Chuẩn hóa hệ điều hành và danh sách cổng của thiết bị"""
+        """Deep-copy a device and normalize its OS and port evidence.
+
+        Args:
+            device (dict): Extracted device with optional OS and a ports list.
+
+        Returns:
+            dict: Device with normalized OS and ports.
+        """
         if not isinstance(device, dict):
             raise ValueError("Device must be a dictionary")
 
@@ -54,7 +69,15 @@ class MisconfigEvidenceNormalizer:
         return result
 
     def _normalize_os(self, os_info: dict | None) -> dict | None:
-        """Chuẩn hóa thông tin OS và xác định OS family"""
+        """Normalize OS labels and infer a family from known name keywords.
+
+        Args:
+            os_info (dict | None): Discovery OS fingerprint information.
+
+        Returns:
+            dict | None: Copied OS fields with normalized name, version, and inferred
+                family, or None for empty input.
+        """
         if not os_info:
             return None
         if not isinstance(os_info, dict):
@@ -78,7 +101,14 @@ class MisconfigEvidenceNormalizer:
         return result
 
     def _normalize_port(self, port: dict) -> dict:
-        """Chuẩn hóa số cổng, protocol, state và service"""
+        """Normalize port number, protocol, state, and service without losing metadata.
+
+        Args:
+            port (dict): Extracted network port evidence.
+
+        Returns:
+            dict: Copied port evidence with normalized fields.
+        """
         if not isinstance(port, dict):
             raise ValueError("Port must be a dictionary")
 
@@ -90,7 +120,15 @@ class MisconfigEvidenceNormalizer:
         return result
 
     def _normalize_service(self, service: dict | None) -> dict | None:
-        """Chuẩn hóa tên dịch vụ và giữ nguyên thông tin fingerprint"""
+        """Canonicalize the service name while preserving fingerprint fields.
+
+        Args:
+            service (dict | None): Extracted service fingerprint.
+
+        Returns:
+            dict | None: Copied service with its normalized alias, or None for absent
+                service evidence.
+        """
         if service is None:
             return None
         if not isinstance(service, dict):
@@ -103,7 +141,14 @@ class MisconfigEvidenceNormalizer:
 
     @staticmethod
     def _port_number(value) -> int | None:
-        """Chuyển số cổng sang integer nếu hợp lệ"""
+        """Convert a port-like value to an integer, rejecting booleans and invalid ranges.
+
+        Args:
+            value (Any): Raw port value, usually an integer or numeric string.
+
+        Returns:
+            int | None: Port number from 1 through 65535, or None if conversion fails.
+        """
         try:
             if isinstance(value, bool):
                 return None
@@ -114,12 +159,26 @@ class MisconfigEvidenceNormalizer:
 
     @staticmethod
     def _string(value) -> str | None:
-        """Chuẩn hóa giá trị thành chuỗi"""
+        """Convert a non-null value to trimmed text.
+
+        Args:
+            value (Any): Raw value to stringify.
+
+        Returns:
+            str | None: Nonempty string, or None for null or blank values.
+        """
         if value is None: return None
         return str(value).strip() or None
 
     @staticmethod
     def _lower(value) -> str | None:
-        """Chuẩn hóa chuỗi về chữ thường"""
+        """Trim and lowercase text, rejecting non-string input.
+
+        Args:
+            value (Any): Raw value to normalize.
+
+        Returns:
+            str | None: Nonempty lowercase text, or None.
+        """
         return value.strip().lower() or None if isinstance(value, str) else None
 

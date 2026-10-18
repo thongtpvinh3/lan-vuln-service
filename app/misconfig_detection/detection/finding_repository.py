@@ -34,7 +34,15 @@ class MisconfigFindingRepository:
     """).bindparams(bindparam("evidence", type_=JSONB))
 
     def save(self, findings: list[dict]) -> int:
-        """Lưu danh sách Finding vào PostgreSQL."""
+        """Upsert findings by stage, device, and normalized rule in one transaction.
+
+        Args:
+            findings (list[dict]): Finding records containing IDs, device, rule,
+                severity, reason, and evidence.
+
+        Returns:
+            int: Number of submitted findings; zero for empty input.
+        """
         if not findings:
             return 0
 
@@ -47,7 +55,14 @@ class MisconfigFindingRepository:
 
     @staticmethod
     def get_by_scan(scan_id: str) -> list[dict]:
-        """Lấy tất cả Finding thuộc một lần quét."""
+        """Load all misconfiguration findings for a scan.
+
+        Args:
+            scan_id (str): Identifier of the scan whose records are being processed.
+
+        Returns:
+            list[dict]: Database finding rows ordered by id.
+        """
         sql = text("""
             SELECT *
             FROM vuln_misconfig_finding
@@ -62,7 +77,14 @@ class MisconfigFindingRepository:
 
     @staticmethod
     def get_by_stage(stage_run_id: str) -> list[dict]:
-        """Lấy Finding thuộc một lần thực thi Assessment Stage."""
+        """Load misconfiguration findings for a stage execution.
+
+        Args:
+            stage_run_id (str): Identifier of the assessment stage execution.
+
+        Returns:
+            list[dict]: Database finding rows ordered by id.
+        """
         sql = text("""
             SELECT *
             FROM vuln_misconfig_finding

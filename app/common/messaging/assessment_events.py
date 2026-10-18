@@ -12,6 +12,20 @@ def publish_step_completed(
         duration_ms: int = 0,
         warnings: list | None = None
 ):
+    """Publish a successful step report, adding Platform fields to CVE findings.
+
+    Args:
+        request (dict): Assessment envelope containing scan_id and
+            data.stage_run_id/inputs.
+        step (str): Name of the completed assessment step.
+        result (dict[str, Any] | None): Step output; None becomes an empty dictionary.
+        seq (int): Step report sequence number; defaults to 1.
+        duration_ms (int): Step execution time in milliseconds; defaults to 0.
+        warnings (list | None): Report warnings; None becomes an empty list.
+
+    Returns:
+        None: No return value.
+    """
     data = request["data"]
     stage_run_id = data["stage_run_id"]
 
@@ -44,6 +58,17 @@ def publish_step_completed(
 
 
 def publish_step_failed(request: dict, step: str, error: Exception):
+    """Publish a failed step report with an error message truncated to 500 characters.
+
+    Args:
+        request (dict): Assessment envelope containing scan_id and
+            data.stage_run_id/inputs.
+        step (str): Name of the failed assessment step.
+        error (Exception): Failure whose message is included in the report.
+
+    Returns:
+        None: No return value.
+    """
     event = BaseEvent(
         event=EventKeys.STEP_FAILED,
         scan_id=request["scan_id"],
@@ -58,6 +83,15 @@ def publish_step_failed(request: dict, step: str, error: Exception):
 
 
 def publish_stage_completed(request: dict):
+    """Publish a successful terminal report for an assessment stage.
+
+    Args:
+        request (dict): Assessment envelope containing scan_id and
+            data.stage_run_id/inputs.
+
+    Returns:
+        None: No return value.
+    """
     event = BaseEvent(
         event=EventKeys.STAGE_COMPLETED,
         scan_id=request["scan_id"],

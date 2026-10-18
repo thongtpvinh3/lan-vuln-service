@@ -5,6 +5,11 @@ from app.common.messaging.event_keys import EventKeys
 
 
 def setup():
+    """Declare the configured exchange, inbox bindings, and dead letter topology.
+
+    Returns:
+        None: No return value.
+    """
     cfg = RabbitMQConfig.from_env()
     connection = pika.BlockingConnection(pika.URLParameters(cfg.url))
 

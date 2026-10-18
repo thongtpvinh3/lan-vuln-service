@@ -6,6 +6,17 @@ logger = logging.getLogger(__name__)
 
 
 def resolve_cpes(normalized):
+    """Resolve software to official CPE names or versioned virtual targets, deduplicated by
+    endpoint.
+
+    Args:
+        normalized (list[dict]): Normalized software records with part, vendor, product,
+            version, and service.
+
+    Returns:
+        list[tuple[dict, str]]: Software records with resolution metadata paired with
+            evaluated CPE names.
+    """
     resolved = []
     seen = set()
 

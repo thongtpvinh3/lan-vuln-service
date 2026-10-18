@@ -9,6 +9,24 @@ class MisconfigFindingFactory:
 
     @staticmethod
     def create(scan_id: str, stage_run_id: str, evaluation: dict, rule: dict, device: dict) -> dict:
+        """Create a stable misconfiguration finding from a consistent MATCH evaluation.
+
+        Raise ValueError if IDs disagree, scan or stage IDs are missing, or evidence is
+        empty.
+
+        Args:
+            scan_id (str): Identifier of the scan whose records are being processed.
+            stage_run_id (str): Identifier of the assessment stage execution.
+            evaluation (dict): MATCH result with device_ip, normalized_rule_id, and
+                nonempty evidence.
+            rule (dict): Rule record with identifiers and a normalized_rule
+                specification.
+            device (dict): Normalized device evidence containing ip, os, and ports.
+
+        Returns:
+            dict: Persistable finding with deterministic ID, severity, reason, and
+                copied supporting evidence.
+        """
         if evaluation.get("status") != "MATCH":
             raise ValueError("Only MATCH evaluations can create findings")
 

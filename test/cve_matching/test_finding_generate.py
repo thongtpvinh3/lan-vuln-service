@@ -2,6 +2,11 @@ from app.cve_matching.finding_generate import build_finding
 
 
 def test_build_finding():
+    """Verify CVSS and evidence fields when building a virtual-match CVE finding.
+
+    Returns:
+        None: No return value.
+    """
     software = {
         "service": {
             "host": "192.168.56.12",

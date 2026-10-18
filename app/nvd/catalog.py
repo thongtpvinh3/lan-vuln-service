@@ -17,9 +17,25 @@ logger = logging.getLogger(__name__)
 class NvdCatalog:
 
     def __init__(self):
+        """Initialize the HTTP client used on catalog cache misses.
+
+        Returns:
+            None: No return value.
+        """
         self.client = NvdClient()
 
     def cpes(self, software, force=False):
+        """Resolve active exact-version CPE names through the database cache or NVD.
+
+        Args:
+            software (dict): Product identity containing part, vendor, product, and
+                version.
+            force (bool): Bypass cached data when True; defaults to False.
+
+        Returns:
+            list[str]: Sorted unique matching CPE names on a fresh lookup, or the cached
+                names.
+        """
         part = software["part"]
         vendor = software["vendor"]
         product = software["product"]
@@ -61,6 +77,15 @@ class NvdCatalog:
         return names
 
     def cves(self, cpe_name, force=False):
+        """Load CVEs for an official CPE name and cache the filtered results.
+
+        Args:
+            cpe_name (str): Official CPE name used for the NVD cpeName query.
+            force (bool): Bypass cached data when True; defaults to False.
+
+        Returns:
+            list[dict]: NVD CVE records excluding rejected entries.
+        """
         key = f"cves|{cpe_name}"
 
         if not force:
@@ -81,7 +106,17 @@ class NvdCatalog:
         return cves
 
     def cves_virtual(self, match_string: str, force=False):
-        """tìm CVE theo CPE Match Criteria"""
+        """Load CVE candidates for a virtual product match criterion and cache the results.
+
+        Args:
+            match_string (str): CPE criterion passed as the NVD virtualMatchString
+                parameter.
+            force (bool): Bypass cached data when True; defaults to False.
+
+        Returns:
+            list[dict]: NVD CVE records excluding rejected entries; observed versions
+                still require local checking.
+        """
 
         key = f"cves_virtual|{match_string}"
 

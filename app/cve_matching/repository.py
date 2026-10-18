@@ -7,6 +7,18 @@ from app.common.finding_id import create_finding_id
 
 
 def save_findings(request: dict, findings: list):
+    """Assign stable IDs in place and replace the stage execution CVE findings
+    transactionally.
+
+    Args:
+        request (dict): Assessment envelope containing scan_id and
+            data.stage_run_id/inputs.
+        findings (list[dict]): Findings to persist; each receives a finding_id in place.
+            An empty list clears prior stage findings.
+
+    Returns:
+        None: No return value.
+    """
     stage_run_id = request['data']["stage_run_id"]
     scan_id = request["scan_id"]
     for finding in findings:
@@ -44,6 +56,15 @@ def save_findings(request: dict, findings: list):
 
 
 def get_findings(scan_id: str):
+    """Load scan CVE findings and convert scores and timestamps for JSON responses.
+
+    Args:
+        scan_id (str): Identifier of the scan whose records are being processed.
+
+    Returns:
+        list[dict]: Findings ordered by host and descending CVSS score, with null scores
+            last.
+    """
     with db.connect() as conn:
         rows = conn.execute(
             text("SELECT * FROM vuln_finding WHERE scan_id = :scan_id ORDER BY host, cvss_score DESC NULLS LAST"),
@@ -67,6 +88,14 @@ def get_findings(scan_id: str):
 # Tìm tên phần mềm trong bảng vuln_cpe_alias.
 # Kiểm tra vendor/product tương ứng có tồn tại trong vuln_cpe_dictionary và chưa bị deprecated
 def find_product_by_alias(alias: str) -> dict | None:
+    """Look up an alias whose product still exists in the active CPE dictionary.
+
+    Args:
+        alias (str): Exact alias stored in vuln_cpe_alias.
+
+    Returns:
+        dict | None: Product part, vendor, and product fields, or None if not found.
+    """
     sql = text("""
         SELECT
             a.part,
@@ -150,7 +179,16 @@ def find_product_by_alias(alias: str) -> dict | None:
 
 
 def find_product_by_cpe(part: str, vendor: str, product: str) -> dict | None:
-    """Xác nhận định danh sản phẩm tồn tại trong NVD CPE Dictionary."""
+    """Look up a nondeprecated product by exact CPE identity.
+
+    Args:
+        part (str): CPE part code, such as a, o, or h.
+        vendor (str): Exact CPE vendor identifier.
+        product (str): Exact CPE product identifier.
+
+    Returns:
+        dict | None: Product identity fields, or None if no active product matches.
+    """
 
     sql = text("""
         SELECT part, vendor, product
@@ -172,6 +210,15 @@ def find_product_by_cpe(part: str, vendor: str, product: str) -> dict | None:
 
 
 def find_products(name: str, limit: int = 10) -> list[dict]:
+    """Rank active CPE products by exact name, phrases, and partial text matches.
+
+    Args:
+        name (str): Observed software or product name to normalize and search.
+        limit (int): Maximum candidate count; must be positive and defaults to 10.
+
+    Returns:
+        list[dict]: Product identities and match scores ordered by descending score.
+    """
     if limit < 1: raise ValueError("limit must be positive")
     name = " ".join(name.lower().split())
 
@@ -241,11 +288,29 @@ def find_products(name: str, limit: int = 10) -> list[dict]:
 
 
 def _search_pattern(value: str) -> str:
+    """Escape SQL LIKE metacharacters and wrap the value for substring matching.
+
+    Args:
+        value (str): Literal search text.
+
+    Returns:
+        str: Escaped pattern enclosed in percent wildcards.
+    """
     return "%" + value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%"
 
 
 def find_cpe_names(part: str,vendor: str,product: str,version: str) -> list[str]:
-    """Tìm CPE Names chính thức theo sản phẩm và phiên bản."""
+    """Find nondeprecated official CPE names for an exact product and version.
+
+    Args:
+        part (str): CPE part code, such as a, o, or h.
+        vendor (str): Exact CPE vendor identifier.
+        product (str): Exact CPE product identifier.
+        version (str): Exact observed version to find in the dictionary.
+
+    Returns:
+        list[str]: Matching CPE names in lexical order.
+    """
     sql = text("""
         SELECT cpe_name
         FROM vuln_cpe_dictionary

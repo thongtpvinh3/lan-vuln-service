@@ -23,17 +23,44 @@ class MisconfigRuleParser:
             repository_root: str | Path,
             repository_url: str = "https://github.com/ComplianceAsCode/content"
     ):
+        """Resolve the repository root and source URL used for rule metadata.
+
+        Args:
+            repository_root (str | Path): Root directory containing the checked-out
+                source rules.
+            repository_url (str): Repository web URL used to build revision-pinned
+                references.
+
+        Returns:
+            None: No return value.
+        """
         self.repository_root = Path(repository_root).resolve()
         self.repository_url = repository_url.rstrip("/")
 
     @staticmethod
     def _optional_text(value) -> str | None:
+        """Keep nonempty trimmed strings and discard other metadata values.
+
+        Args:
+            value (Any): Raw metadata value.
+
+        Returns:
+            str | None: Trimmed text or None.
+        """
         if isinstance(value, str):
             return value.strip() or None
         return None
 
     @classmethod
     def _severity(cls, value) -> str:
+        """Normalize a recognized severity label, falling back to UNKNOWN.
+
+        Args:
+            value (Any): Raw severity metadata.
+
+        Returns:
+            str: Uppercase supported severity label or UNKNOWN.
+        """
         if not isinstance(value, str): return "UNKNOWN"
         result = value.strip().upper()
         if result not in cls.VALID_SEVERITIES: return "UNKNOWN"
@@ -41,7 +68,15 @@ class MisconfigRuleParser:
 
     @staticmethod
     def _references(value) -> list[dict]:
-        """"""
+        """Flatten reference groups into typed string values.
+
+        Args:
+            value (Any): Mapping of reference types to scalar or list values; other
+                input yields no references.
+
+        Returns:
+            list[dict]: Reference entries with type and value; null items are omitted.
+        """
         if not isinstance(value, dict): return []
         result = []
         for name, content in value.items():
@@ -58,10 +93,27 @@ class MisconfigRuleParser:
 
     @staticmethod
     def _identifiers(value) -> dict:
+        """Copy identifier metadata with string keys.
+
+        Args:
+            value (Any): Raw identifiers metadata.
+
+        Returns:
+            dict: Identifier mapping, or an empty dictionary for non-mapping input.
+        """
         if not isinstance(value, dict): return {}
         return {str(key): item for key, item in value.items()}
 
     def _relative_path(self, rule_path: Path) -> str:
+        """Require a rule to be inside the repository and format its relative path.
+
+        Args:
+            rule_path (Path): Resolved source rule path.
+
+        Returns:
+            str: Repository-relative POSIX path; raises RuleParseError for an outside
+                path.
+        """
         try:
             relative = rule_path.relative_to(self.repository_root)
         except ValueError as exc:
@@ -70,6 +122,15 @@ class MisconfigRuleParser:
         return relative.as_posix()
 
     def _reference_url(self, revision: str, relative_path: str) -> str:
+        """Build a URL to a source rule at a specific revision.
+
+        Args:
+            revision (str): Source Git revision.
+            relative_path (str): Repository-relative POSIX rule path.
+
+        Returns:
+            str: Repository blob URL with escaped revision and path.
+        """
         return (
             f"{self.repository_url}/blob/"
             f"{quote(revision, safe='')}/"
@@ -78,7 +139,14 @@ class MisconfigRuleParser:
 
     @staticmethod
     def _json_compatible(value):
-        """"""
+        """Check that parsed YAML can be JSON serialized without replacing its values.
+
+        Args:
+            value (Any): Parsed YAML data to validate.
+
+        Returns:
+            Any: The original value; raises RuleParseError if JSON serialization fails.
+        """
         try:
             json.dumps(value, ensure_ascii=False)
         except (TypeError, ValueError) as exc:
@@ -87,6 +155,17 @@ class MisconfigRuleParser:
         return value
 
     def parse(self, rule_path: str | Path, revision: str) -> dict:
+        """Parse rule metadata and preserve source content, marking templates as
+        provisional.
+
+        Args:
+            rule_path (str | Path): Path to a rule.yml file within the repository.
+            revision (str): Nonempty Git revision identifying the source content.
+
+        Returns:
+            dict: Disabled source rule record with metadata, revision, raw content,
+                checksum, and parse status.
+        """
         path = Path(rule_path).resolve()
 
         if not path.is_file(): raise RuleParseError(f"Rule file not found: {path}")
@@ -174,6 +253,16 @@ class MisconfigRuleParser:
         return rule_record
 
     def parse_many(self, rule_paths: list[Path], revision: str, ) -> tuple[list[dict], list[dict]]:
+        """Parse source files and attempt raw preservation when metadata parsing fails.
+
+        Args:
+            rule_paths (list[Path]): Source rule files to process in order.
+            revision (str): Git revision shared by the source files.
+
+        Returns:
+            tuple[list[dict], list[dict]]: Prepared records and per-path metadata
+                errors; records may be incomplete if raw preservation also fails.
+        """
         records = []
         errors = []
         parsed_count = 0
@@ -206,6 +295,16 @@ class MisconfigRuleParser:
         return records, errors
 
     def parse_raw_only(self, rule_path: str | Path, revision: str, reason: str) -> dict:
+        """Preserve raw source and a checksum when structured metadata cannot be parsed.
+
+        Args:
+            rule_path (str | Path): Source rule file inside the repository.
+            revision (str): Git revision associated with the raw source.
+            reason (str): Metadata parsing error stored for later review.
+
+        Returns:
+            dict: Disabled RAW_ONLY rule record with the supplied parse error.
+        """
         path = Path(rule_path).resolve()
         relative_path = self._relative_path(path)
         raw_bytes = path.read_bytes()
@@ -246,6 +345,16 @@ class MisconfigRuleParser:
 
     @staticmethod
     def _prepare_yaml(raw_content: str) -> tuple[str, bool]:
+        """Remove template directives and replace expressions before safe YAML parsing.
+
+        Args:
+            raw_content (str): Original YAML source, possibly containing
+                ComplianceAsCode template syntax.
+
+        Returns:
+            tuple[str, bool]: Sanitized YAML text and whether a supported template form
+                was found.
+        """
         contains_template = False
         directive = re.compile(r"^[ \t]*\{\{[%#].*?[%#]}}[ \t]*$")
         lines = []
@@ -262,6 +371,16 @@ class MisconfigRuleParser:
         counter = 0
 
         def replace_expression(match):
+            """Replace one template expression while tracking provisional parsing state.
+
+            Args:
+                match (re.Match[str]): Template expression match within the sanitized
+                    source.
+
+            Returns:
+                str: Placeholder token, or preserved line breaks for a standalone
+                    expression.
+            """
             nonlocal counter, contains_template
             counter += 1
             contains_template = True

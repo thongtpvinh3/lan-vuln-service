@@ -25,6 +25,17 @@ class MisconfigNormalizationWorker:
     _STOP = object()
 
     def __init__(self, revision: str, service: MisconfigRuleNormalizationService | None = None):
+        """Initialize a bounded batch queue, normalization service, summary, and worker
+        thread.
+
+        Args:
+            revision (str): Git revision of the committed source batches.
+            service (MisconfigRuleNormalizationService | None): Batch normalizer; None
+                creates the default service.
+
+        Returns:
+            None: No return value.
+        """
         self.revision = revision
         self.service = service or MisconfigRuleNormalizationService()
         self.queue = queue.Queue(maxsize=4)
@@ -34,15 +45,35 @@ class MisconfigNormalizationWorker:
         self.closed = False
 
     def start(self):
+        """Start the normalization thread once; repeated starts raise RuntimeError.
+
+        Returns:
+            None: No return value.
+        """
         if self.started: raise RuntimeError("Worker already started")
         self.started = True
         self.thread.start()
 
     def submit(self, source_files: list[str]):
+        """Queue a copied source-file batch, waiting for capacity if necessary.
+
+        Args:
+            source_files (list[str]): Committed repository-relative paths; an empty
+                batch is ignored.
+
+        Returns:
+            None: No return value.
+        """
         if not self.started or self.closed: raise RuntimeError("Worker is not accepting batches")
         if source_files: self.queue.put(list(source_files))
 
     def _run(self):
+        """Normalize queued batches until the stop sentinel, accumulating counts and
+        errors.
+
+        Returns:
+            None: No return value.
+        """
         logger.info("Normalization worker started: revision=%s", self.revision)
 
         while True:
@@ -69,6 +100,12 @@ class MisconfigNormalizationWorker:
                 self.queue.task_done()
 
     def finish(self) -> dict:
+        """Close submissions and wait until all queued batches and the worker finish.
+
+        Returns:
+            dict: Copy of aggregate batch counts, normalization counts, failed_batches,
+                and errors.
+        """
         if not self.started: raise RuntimeError("Worker not started")
 
         if not self.closed:

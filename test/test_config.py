@@ -11,6 +11,16 @@ import pytest
 @pytest.fixture
 def config_runner(tmp_path):
     # Isolate the project's dotenv loader from developer credentials and app startup.
+    """Create an isolated project and subprocess runner for dotenv configuration tests.
+
+    Args:
+        tmp_path (Path): Pytest temporary directory used to construct the isolated
+            project.
+
+    Returns:
+        tuple[Path, Callable[..., subprocess.CompletedProcess[str]]]: Temporary project
+            root and isolated configuration runner.
+    """
     project_root = tmp_path / "project"
     config_path = project_root / "app" / "common" / "config.py"
     config_path.parent.mkdir(parents=True)
@@ -37,6 +47,17 @@ print(json.dumps({
 """
 
     def run(**overrides):
+        """Run the copied configuration loader with a filtered environment and explicit
+        overrides.
+
+        Args:
+            **overrides (str): Environment variable overrides applied to the isolated
+                subprocess.
+
+        Returns:
+            subprocess.CompletedProcess[str]: Process result with captured stdout,
+                stderr, and exit code.
+        """
         env = {
             key: value for key, value in os.environ.items()
             if key not in {"LAN_VULN_ENV_FILE", "SCOPE_CHECK_URL", "DATABASE_URL", "PYTHON_DOTENV_DISABLED"}
@@ -56,6 +77,15 @@ print(json.dumps({
 
 
 def test_default_file_is_relative_to_project_root(config_runner):
+    """Verify that the default dotenv path resolves from the copied project root.
+
+    Args:
+        config_runner (tuple[Path, Callable[..., subprocess.CompletedProcess[str]]]):
+            Temporary project root and isolated configuration runner.
+
+    Returns:
+        None: No return value.
+    """
     _, run = config_runner
     result = run()
     assert result.returncode == 0, result.stderr
@@ -70,6 +100,17 @@ def test_default_file_is_relative_to_project_root(config_runner):
 
 @pytest.mark.parametrize("absolute", [False, True])
 def test_custom_file_replaces_default_file(config_runner, absolute):
+    """Verify that a selected dotenv file replaces the default for relative and absolute
+    paths.
+
+    Args:
+        config_runner (tuple[Path, Callable[..., subprocess.CompletedProcess[str]]]):
+            Temporary project root and isolated configuration runner.
+        absolute (bool): Whether to select the custom dotenv file with an absolute path.
+
+    Returns:
+        None: No return value.
+    """
     root, run = config_runner
     custom_file = root / "config" / "local.env"
     custom_file.parent.mkdir()
@@ -90,6 +131,15 @@ def test_custom_file_replaces_default_file(config_runner, absolute):
 
 
 def test_process_environment_overrides_file(config_runner):
+    """Verify that process environment values take precedence over dotenv values.
+
+    Args:
+        config_runner (tuple[Path, Callable[..., subprocess.CompletedProcess[str]]]):
+            Temporary project root and isolated configuration runner.
+
+    Returns:
+        None: No return value.
+    """
     _, run = config_runner
     result = run(SCOPE_CHECK_URL="http://process.example/check")
     assert result.returncode == 0, result.stderr
@@ -97,6 +147,15 @@ def test_process_environment_overrides_file(config_runner):
 
 
 def test_missing_custom_file_fails_instead_of_loading_default(config_runner):
+    """Verify that explicitly selecting a missing dotenv file fails.
+
+    Args:
+        config_runner (tuple[Path, Callable[..., subprocess.CompletedProcess[str]]]):
+            Temporary project root and isolated configuration runner.
+
+    Returns:
+        None: No return value.
+    """
     _, run = config_runner
     result = run(LAN_VULN_ENV_FILE="missing.env")
     assert result.returncode != 0
@@ -105,6 +164,15 @@ def test_missing_custom_file_fails_instead_of_loading_default(config_runner):
 
 
 def test_default_file_is_optional_with_process_configuration(config_runner):
+    """Verify that process configuration works without a default dotenv file.
+
+    Args:
+        config_runner (tuple[Path, Callable[..., subprocess.CompletedProcess[str]]]):
+            Temporary project root and isolated configuration runner.
+
+    Returns:
+        None: No return value.
+    """
     root, run = config_runner
     (root / ".env").unlink()
     result = run(SCOPE_CHECK_URL="http://container.example/check")

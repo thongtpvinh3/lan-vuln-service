@@ -3,6 +3,11 @@ from app.cve_matching.normalize import normalize
 
 
 def test_platform_input():
+    """Assert that the snapshot-only fixture yields two normalized Apache software records.
+
+    Returns:
+        None: No return value.
+    """
     request = {
         "data": {
             "inputs": {

@@ -28,6 +28,23 @@ class MisconfigRuleFetcher:
         timeout: int | None = None,
         content_directories: tuple[str, ...] | None = None,
     ):
+        """Resolve repository settings and validate the Git ref and command timeout.
+
+        Args:
+            git_url (str | None): Source Git URL; None uses the environment setting or
+                ComplianceAsCode default.
+            git_ref (str | None): Branch, tag, or revision to fetch; None uses the
+                environment setting or master.
+            workspace (str | Path | None): Checkout directory; relative paths resolve
+                from the project root. None uses configuration.
+            timeout (int | None): Positive Git command timeout in seconds; None uses
+                configuration.
+            content_directories (tuple[str, ...] | None): Directories to scan within the
+                checkout; None uses the default guide and applications paths.
+
+        Returns:
+            None: No return value.
+        """
         self.git_url = (git_url or os.getenv("MISCONFIG_RULE_GIT_URL") or self.DEFAULT_URL)
         self.git_ref = (git_ref or os.getenv("MISCONFIG_RULE_GIT_REF") or "master")
 
@@ -63,7 +80,17 @@ class MisconfigRuleFetcher:
             raise ValueError("Git timeout must be positive")
 
     def _git(self, *args: str, cwd: Path | None = None) -> str:
-        """Execute Git without invoking a shell."""
+        """Run Git without a shell and convert process failures into RuntimeError.
+
+        Args:
+            cwd (Path | None): Working directory for Git; None inherits the process
+                directory.
+            *args (str): Git subcommand and arguments passed as separate process
+                arguments.
+
+        Returns:
+            str: Trimmed standard output from the completed Git command.
+        """
 
         command = ["git", "-c", "core.longpaths=true", *args]
         logger.debug("Executing Git command: %s", command)
@@ -97,7 +124,12 @@ class MisconfigRuleFetcher:
         return result.stdout.strip()
 
     def _is_repository(self) -> bool:
-        """Check whether workspace is a valid Git repository."""
+        """Check that the workspace is the root of a valid Git checkout.
+
+        Returns:
+            bool: True when the repository root exactly matches the configured
+                workspace.
+        """
 
         if not self.workspace.is_dir(): return False
         if not (self.workspace / ".git").exists(): return False
@@ -109,24 +141,53 @@ class MisconfigRuleFetcher:
             return False
 
     def _has_local_changes(self) -> bool:
+        """Check tracked workspace files for staged or unstaged modifications.
+
+        Returns:
+            bool: True when Git reports tracked changes; untracked files are ignored.
+        """
         status = self._git("status", "--porcelain", "--untracked-files=no", cwd=self.workspace)
         return bool(status)
 
     def _validate_remote(self) -> None:
+        """Require the existing origin URL to match the configured source URL.
+
+        Returns:
+            None: No return value.
+        """
         actual_url = self._git("remote", "get-url", "origin", cwd=self.workspace)
 
         def normalize_url(value: str) -> str:
+            """Remove trailing slashes and a .git suffix for origin URL comparison.
+
+            Args:
+                value (str): Repository URL to compare.
+
+            Returns:
+                str: Normalized repository URL.
+            """
             return value.rstrip("/").removesuffix(".git")
 
         if normalize_url(actual_url) != normalize_url(self.git_url):
             raise RuntimeError(f"Existing Git workspace has a different origin: {actual_url}. Expected: {self.git_url}")
 
     def _checkout_revision(self) -> None:
+        """Shallow-fetch the configured ref and check out FETCH_HEAD in detached mode.
+
+        Returns:
+            None: No return value.
+        """
         self._git("fetch", "--depth", "1", "origin", self.git_ref, cwd=self.workspace)
 
         self._git("checkout", "--detach", "--force", "FETCH_HEAD", cwd=self.workspace)
 
     def _update_repository(self) -> None:
+        """Validate the checkout and remote, reject tracked changes, and update its
+        revision.
+
+        Returns:
+            None: No return value.
+        """
         if not self._is_repository(): raise RuntimeError(f"Invalid Git repository: {self.workspace}")
 
         self._validate_remote()
@@ -139,6 +200,11 @@ class MisconfigRuleFetcher:
         self._checkout_revision()
 
     def _clone_repository(self) -> None:
+        """Create a shallow checkout and remove an incomplete clone if setup fails.
+
+        Returns:
+            None: No return value.
+        """
         logger.info("Cloning ComplianceAsCode repository into %s", self.workspace)
         self.workspace.parent.mkdir(parents=True, exist_ok=True)
 
@@ -162,6 +228,11 @@ class MisconfigRuleFetcher:
             raise
 
     def fetch_repository(self) -> Path:
+        """Clone or update the configured checkout and verify its resolved revision.
+
+        Returns:
+            Path: Local repository workspace ready for rule discovery.
+        """
         if self.workspace.exists():
             if not self.workspace.is_dir():
                 raise RuntimeError(f"Workspace exists but is not a directory: {self.workspace}")
@@ -179,13 +250,22 @@ class MisconfigRuleFetcher:
         return self.workspace
 
     def get_revision(self) -> str:
+        """Read the exact HEAD commit of the validated checkout.
+
+        Returns:
+            str: Git commit hash; raises RuntimeError if the checkout is unavailable.
+        """
         if not self._is_repository():
             raise RuntimeError("Repository has not been fetched")
 
         return self._git("rev-parse", "HEAD", cwd=self.workspace)
 
     def discover_rules(self) -> list[Path]:
-        """Find rule.yml files within configured directories."""
+        """Discover rule.yml files inside the configured checkout directories.
+
+        Returns:
+            list[Path]: Sorted unique rule file paths; symbolic links are excluded.
+        """
 
         if not self._is_repository():
             raise RuntimeError("Repository has not been fetched")

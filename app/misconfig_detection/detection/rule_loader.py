@@ -9,10 +9,25 @@ logger = logging.getLogger(__name__)
 class MisconfigRuleLoader:
 
     def __init__(self, repository: MisconfigRuleRepository | None = None):
+        """Choose the repository used to load normalized rules.
+
+        Args:
+            repository (MisconfigRuleRepository | None): Injected repository; None
+                creates the default database repository.
+
+        Returns:
+            None: No return value.
+        """
         self.repository = repository or MisconfigRuleRepository()
 
     def load_enabled_rules(self) -> list[dict]:
-        """Lấy rule có cấu trúc hợp lệ, không lọc theo cờ trạng thái."""
+        """Load structurally valid normalized rules without filtering enabled or execution
+        status.
+
+        Returns:
+            list[dict]: Rules with dictionary specifications and conditions plus
+                list-shaped evidence requirements.
+        """
 
         records = self.repository.get_enabled_normalized_rules()
         rules = []
