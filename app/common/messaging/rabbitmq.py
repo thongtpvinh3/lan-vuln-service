@@ -1,8 +1,9 @@
 import json
 import logging
 import time
+from threading import Thread
 
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import Future
 
 import pika
 import pika.exceptions
@@ -86,11 +87,12 @@ class RabbitEventBus:
     def start(self):
         """
         Consumer kết nối lâu dài.
-        Handler chạy trong executor riêng. ACK/NACK được đưa về RabbitMQ I/O thread.
+        Mỗi message chạy trong thread riêng. ACK/NACK được đưa về RabbitMQ I/O thread.
         """
         if not self.handlers: raise RuntimeError("No event handlers registered")
 
-        with ThreadPoolExecutor(max_workers=1) as executor:
+        workers = []
+        try:
             while True:
                 connection = None
 
@@ -100,7 +102,8 @@ class RabbitEventBus:
                     channel.exchange_declare(exchange=self.config.exchange, passive=True)
                     channel.queue_declare(queue=self.config.queue, passive=True)
                     self._bind_queues(channel)
-                    channel.basic_qos(prefetch_count=1)
+                    # Allow new messages while earlier assessments are still running.
+                    channel.basic_qos(prefetch_count=0)
 
                     def on_message(ch, method, properties, body):
                         tag = method.delivery_tag
@@ -110,7 +113,7 @@ class RabbitEventBus:
                         conn = connection
                         logger.info("Received event=%s delivery_tag=%s", routing_key, tag)
 
-                        future = executor.submit(self._dispatch, method.routing_key, body)
+                        future = Future()
 
                         def on_done(result, consumer_conn=conn, consumer_ch=ch, delivery_tag=tag):
                             def settle():
@@ -121,9 +124,9 @@ class RabbitEventBus:
                                     result.result()
                                 except Exception:
                                     logger.exception("Event handling failed")
-                                    consumer_ch.basic_nack(delivery_tag=tag, requeue=False)
+                                    consumer_ch.basic_nack(delivery_tag=delivery_tag, requeue=False)
                                 else:
-                                    consumer_ch.basic_ack(delivery_tag=tag)
+                                    consumer_ch.basic_ack(delivery_tag=delivery_tag)
                                     logger.info("Event acknowledged tag=%s", delivery_tag)
 
                             try:
@@ -132,6 +135,23 @@ class RabbitEventBus:
                                 logger.exception("Cannot schedule ACK/NACK")
 
                         future.add_done_callback(on_done)
+
+                        def process_message(result=future, key=routing_key, payload=body):
+                            try:
+                                self._dispatch(key, payload)
+                            except BaseException as error:
+                                result.set_exception(error)
+                            else:
+                                result.set_result(None)
+
+                        workers[:] = [worker for worker in workers if worker.is_alive()]
+                        worker = Thread(
+                            target=process_message,
+                            name=f"assessment-message-{tag}",
+                            daemon=False,
+                        )
+                        worker.start()
+                        workers.append(worker)
 
                     channel.basic_consume(queue=self.config.queue, on_message_callback=on_message, auto_ack=False)
                     logger.info("RabbitMQ listening on queue=%s", self.config.queue)
@@ -145,6 +165,9 @@ class RabbitEventBus:
 
                 finally:
                     if connection and connection.is_open: connection.close()
+        finally:
+            for worker in workers:
+                worker.join()
 
     def _bind_queues(self, channel):
         """

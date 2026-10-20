@@ -17,6 +17,8 @@ Chạy các lệnh từ thư mục gốc dự án.
 
 ```powershell
 uv sync --locked
+.\.venv\Scripts\Activate.ps1
+python -m pip install -r requirements.txt
 ```
 
 Lệnh này tạo `.venv` và cài các phiên bản trong `uv.lock`, bao gồm pytest cho phát triển. Dùng `uv run --locked` để chạy

@@ -19,7 +19,7 @@ class MisconfigFindingRepository:
             reason, evidence
         )
         VALUES (
-            :finding_id, :scan_id, :stage_run_id, :device_ip, :normalized_rule_id,
+            :finding_id, :scan_id, :stage_run_id, :ip, :normalized_rule_id,
             :external_rule_id, :title, :severity, :evaluation_status,
             :reason, :evidence
         )

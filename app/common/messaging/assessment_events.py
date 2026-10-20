@@ -25,6 +25,16 @@ def publish_step_completed(
             }
             for finding in result["findings"]
         ]
+    elif step == "misconfig_detection" and "findings" in result:
+        result["findings"] = [
+            {
+                "finding_id": str(finding["finding_id"]),
+                "ip": finding["ip"],
+                "misconfig_type": finding.get("external_rule_id") or finding["title"],
+                "detail": finding.get("reason") or finding["title"],
+            }
+            for finding in result["findings"]
+        ]
 
     event = BaseEvent(
         event=EventKeys.STEP_COMPLETED,

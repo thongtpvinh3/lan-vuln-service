@@ -28,7 +28,7 @@ class MisconfigFindingFactory:
             "finding_id": create_finding_id("MISCONFIG", scan_id, stage_run_id, device["ip"], rule["id"]),
             "scan_id": scan_id,
             "stage_run_id": stage_run_id,
-            "device_ip": device["ip"],
+            "ip": device["ip"],
             "normalized_rule_id": rule["id"],
             "external_rule_id": rule.get("external_rule_id"),
             "title": rule.get("title") or rule.get("external_rule_id") or "Misconfiguration detected",

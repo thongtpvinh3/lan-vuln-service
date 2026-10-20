@@ -19,14 +19,15 @@ def recommend(findings: list[dict]) -> list[str]:
     recommendations = []
 
     for finding in findings:
-        finding_type = finding.get("type", "").upper()
-        identifier = finding.get("identifier", "")
+        finding_type = str(finding.get("type") or "").upper()
 
         # Tạo khuyến nghị dựa trên loại lỗ hổng
         if finding_type == "CVE":
             recommendation = DEFAULT_CVE_RECOMMENDATION
         elif finding_type == "MISCONFIG":
-            recommendation = MISCONFIG_RECOMMENDATIONS.get(identifier.upper(), DEFAULT_MISCONFIG_RECOMMENDATION)
+            rule_id = str(finding.get("external_rule_id") or "").strip().upper()
+            recommendation = MISCONFIG_RECOMMENDATIONS.get(rule_id, DEFAULT_MISCONFIG_RECOMMENDATION)
+
         else:
             logger.warning("Unsupported finding type: %s", finding_type)
             continue
