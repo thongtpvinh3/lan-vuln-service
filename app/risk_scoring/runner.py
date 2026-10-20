@@ -61,5 +61,6 @@ def run(request, completed):
 
     logger.info("risk scoring finished scan=%s hosts=%d findings=%d", scan_id, len(results), len(findings))
 
-    completed("risk_scoring", {"scores": scores}, seq=3,
+    hosts = [{"ip": result["host"], "risk_score": result["risk_score"]} for result in results]
+    completed("risk_scoring", {"scores": scores, "hosts": hosts}, seq=3,
               duration_ms=int((perf_counter() - started_at) * 1000), warnings=warnings)
