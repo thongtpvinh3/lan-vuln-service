@@ -463,7 +463,7 @@ CREATE TABLE IF NOT EXISTS vuln_risk_result (
     scan_id TEXT NOT NULL,
     stage_run_id TEXT NOT NULL,
     host TEXT NOT NULL,
-    risk_score NUMERIC(4,2) NOT NULL CHECK (risk_score BETWEEN 0 AND 10),
+    risk_score NUMERIC NOT NULL CHECK (risk_score >= 0),
     risk_level VARCHAR(20) NOT NULL,
     finding_count INTEGER NOT NULL,
     scored_count INTEGER NOT NULL,

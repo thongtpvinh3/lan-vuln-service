@@ -2,6 +2,7 @@
 """Calculate aggregate risk score for one host."""
 
 from typing import Any
+from math import fsum
 
 
 MISCONFIG_SCORES = {
@@ -12,7 +13,6 @@ MISCONFIG_SCORES = {
     "INFO": 0.0,
 }
 
-ADDITIONAL_FINDING_WEIGHT = 0.2
 POLICY_VERSION = "mvp-1"
 MANAGEMENT_PORTS = {22, 23, 3389, 5985, 5986}
 
@@ -71,61 +71,33 @@ def get_finding_score(finding: dict[str, Any]) -> float | None:
 
 
 def get_risk_level(score: float) -> str:
-    if score >= 9.0: return "CRITICAL"
-    if score >= 7.0: return "HIGH"
-    if score >= 4.0: return "MEDIUM"
+    """Classify the uncapped sum of finding risk scores for one host."""
+    if score >= 60.0: return "CRITICAL"
+    if score >= 30.0: return "HIGH"
+    if score >= 10.0: return "MEDIUM"
     if score > 0.0: return "LOW"
     return "NONE"
 
 
 def calculate(findings: list[dict[str, Any]]) -> dict[str, Any]:
+    """Sum each distinct finding's published risk score, without a host cap."""
     unique_findings = {}
 
     for finding in findings:
-        key = (str(finding.get("type") or "").upper(), str(finding.get("identifier") or ""))
+        finding_id = finding.get("finding_id")
+        if not finding_id or finding_id == "None":
+            continue
+        unique_findings.setdefault(finding_id, finding)
 
-        # Ignore malformed records with missing identity
-        if not key[0] or not key[1]: continue
-
-        score = get_finding_score(finding)
-        existing = unique_findings.get(key)
-
-        # Keep the record with the highest valid score
-        if existing is None:
-            unique_findings[key] = (finding, score)
-        elif score is not None and (existing[1] is None or score > existing[1]):
-            unique_findings[key] = (finding, score)
-
-    # 2. Collect valid scores
     scores = [
-        score
-        for _, score in unique_findings.values()
-        if score is not None
+        result["risk_score"]
+        for finding in unique_findings.values()
+        if (result := calculate_finding(finding)) is not None
     ]
 
     finding_count = len(unique_findings)
     scored_count = len(scores)
-
-    # 3. No scoreable findings
-    if not scores:
-        return {
-            "score": 0.0,
-            "level": "NONE",
-            "finding_count": finding_count,
-            "scored_count": 0,
-        }
-
-    # 4. Calculate aggregate risk
-    max_score = max(scores)
-
-    if max_score == 0.0:
-        risk_score = 0.0
-    else:
-        risk_score = min(10.0, max_score + ADDITIONAL_FINDING_WEIGHT * (scored_count - 1))
-
-    risk_score = round(risk_score, 2)
-
-    # 5. Classify result
+    risk_score = round(fsum(scores), 2)
     return {
         "score": risk_score,
         "level": get_risk_level(risk_score),
