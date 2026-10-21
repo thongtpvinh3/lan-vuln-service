@@ -615,9 +615,26 @@ class MisconfigRuleRepository:
 
     @staticmethod
     def get_enabled_normalized_rules() -> list[dict]:
-        """Lấy rule đã chuẩn hóa, không lọc enabled và execution_status."""
+        """Lấy một rule hiện hành cho mỗi nguồn và source_file.
+
+        Dùng last_revision đã đồng bộ để loại các revision lịch sử và đang
+        nhập dở. Nếu có nhiều mapping, chọn bản normalized cập nhật mới nhất.
+        """
 
         sql = text("""
+                   WITH current_rules AS (
+                       SELECT n.*,
+                              ROW_NUMBER() OVER (
+                                  PARTITION BY r.source_id, r.source_file
+                                  ORDER BY n.updated_at DESC NULLS LAST, n.id DESC
+                              ) AS selection_rank
+                       FROM vuln_misconfig_rule_normalized n
+                       JOIN vuln_misconfig_rule r ON r.id = n.rule_id
+                       JOIN vuln_misconfig_source s ON s.id = r.source_id
+                       WHERE r.source_revision = s.last_revision
+                         AND n.source_revision = r.source_revision
+                         AND n.normalized_rule IS NOT NULL
+                   )
                    SELECT id,
                           rule_id,
                           mapping_id,
@@ -631,8 +648,8 @@ class MisconfigRuleRepository:
                           required_evidence,
                           result_mapping,
                           normalized_rule
-                   FROM vuln_misconfig_rule_normalized
-                   WHERE normalized_rule IS NOT NULL
+                   FROM current_rules
+                   WHERE selection_rank = 1
                    ORDER BY id
                    """)
 
@@ -640,6 +657,6 @@ class MisconfigRuleRepository:
             rows = conn.execute(sql).mappings().all()
 
         rules = [dict(row) for row in rows]
-        logger.info("Loaded %d normalized rules", len(rules))
+        logger.info("Loaded %d current normalized rules", len(rules))
         return rules
 
